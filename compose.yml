@@ -1,0 +1,41 @@
+services:
+   app:
+      platform: linux/amd64
+      container_name: graphandco-drive
+      build:
+         context: .
+         dockerfile: Dockerfile
+      restart: unless-stopped
+      env_file:
+         - .env
+      environment:
+         NODE_ENV: production
+         HOSTNAME: 0.0.0.0
+         PORT: 3000
+         DB_HOST: my-sql
+         STORAGE_SIXMYK_ENDPOINT: http://seaweedfs:8336
+         STORAGE_PUBLIC_ENDPOINT: http://seaweedfs:8336
+         STORAGE_ENDPOINT: http://seaweedfs:8336
+         STORAGE_KEY_PREFIX: ""
+      networks:
+         - web-network
+      cpus: 0.5
+      mem_limit: 512m
+      security_opt:
+         - no-new-privileges:true
+      tmpfs:
+         - /tmp:rw,noexec,nosuid,size=128m
+      volumes:
+         - next_cache:/app/.next/cache
+      logging:
+         driver: json-file
+         options:
+            max-size: 10m
+            max-file: "3"
+
+volumes:
+   next_cache:
+
+networks:
+   web-network:
+      external: true

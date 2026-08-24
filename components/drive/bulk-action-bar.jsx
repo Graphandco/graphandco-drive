@@ -1,0 +1,385 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import {
+   Check,
+   Download,
+   Loader2,
+   Tags,
+   Trash2,
+   RotateCcw,
+   Eraser,
+   X,
+} from "lucide-react";
+import { toast } from "sonner";
+
+import {
+   bulkAddFileTags,
+   bulkDeletePermanentItems,
+   bulkRestoreItems,
+   bulkTrashItems,
+   getFileDownloadUrl,
+} from "@/actions";
+import { ConfirmDialog } from "@/components/drive/confirm-dialog";
+import { Button } from "@/components/ui/button";
+import {
+   Dialog,
+   DialogContent,
+   DialogDescription,
+   DialogFooter,
+   DialogHeader,
+   DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+
+export function SelectionCheckbox({
+   selected,
+   onChange,
+   className,
+   visible = true,
+}) {
+   return (
+      <button
+         type="button"
+         role="checkbox"
+         aria-checked={selected}
+         aria-label={selected ? "Désélectionner" : "Sélectionner"}
+         className={cn(
+            "flex size-5 items-center justify-center rounded border border-white/40 bg-black/55 text-white shadow-sm transition",
+            "hover:border-primary hover:bg-black/70",
+            selected && "border-primary bg-primary text-primary-foreground",
+            !visible && "pointer-events-none opacity-0",
+            className,
+         )}
+         onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onChange(!selected, event);
+         }}
+      >
+         {selected ? <Check className="size-3" strokeWidth={3} /> : null}
+      </button>
+   );
+}
+
+export function BulkActionBar({
+   view = "browse",
+   selectedItems = [],
+   allCount = 0,
+   onClear,
+   onSelectAll,
+   onDone,
+}) {
+   const [pending, startTransition] = useTransition();
+   const [tagsOpen, setTagsOpen] = useState(false);
+   const [tagsDraft, setTagsDraft] = useState("");
+   const [confirm, setConfirm] = useState(null);
+
+   const count = selectedItems.length;
+   if (!count) return null;
+
+   const fileIds = selectedItems
+      .filter((item) => item.kind === "file")
+      .map((item) => item.id);
+   const folderIds = selectedItems
+      .filter((item) => item.kind === "folder")
+      .map((item) => item.id);
+   const fileCount = fileIds.length;
+
+   function run(action, { successMessage } = {}) {
+      startTransition(async () => {
+         const result = await action();
+         if (!result?.success) {
+            toast.error(result?.error || "Action impossible");
+            return;
+         }
+         if (result.error) {
+            toast.warning(successMessage || "Terminé", {
+               description: result.error,
+            });
+         } else {
+            toast.success(successMessage || "Terminé");
+         }
+         setConfirm(null);
+         setTagsOpen(false);
+         setTagsDraft("");
+         onClear();
+         onDone?.();
+      });
+   }
+
+   function onAddTags() {
+      run(() => bulkAddFileTags({ ids: fileIds, tags: tagsDraft }), {
+         successMessage:
+            fileCount === 1
+               ? "Tags ajoutés au fichier"
+               : `Tags ajoutés à ${fileCount} fichiers`,
+      });
+   }
+
+   function onDownload() {
+      if (!fileCount) return;
+
+      startTransition(async () => {
+         let ok = 0;
+         const errors = [];
+
+         for (const id of fileIds) {
+            const result = await getFileDownloadUrl(id);
+            if (!result?.success || !result.data?.url) {
+               errors.push(result?.error || `Fichier ${id}`);
+               continue;
+            }
+
+            const anchor = document.createElement("a");
+            anchor.href = result.data.url;
+            anchor.rel = "noopener noreferrer";
+            anchor.target = "_blank";
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            ok += 1;
+
+            if (fileIds.length > 1) {
+               await new Promise((resolve) => setTimeout(resolve, 250));
+            }
+         }
+
+         if (ok === 0) {
+            toast.error(errors.join(" · ") || "Téléchargement impossible");
+         } else if (errors.length) {
+            toast.warning(`${ok} téléchargé(s), ${errors.length} échec(s)`, {
+               description: errors.slice(0, 3).join(" · "),
+            });
+         } else {
+            toast.success(
+               ok === 1
+                  ? "Téléchargement lancé"
+                  : `${ok} téléchargements lancés`,
+            );
+         }
+      });
+   }
+
+   return (
+      <>
+         <div className="pointer-events-none fixed inset-x-0 bottom-16 z-50 flex justify-center px-3">
+            <div className="pointer-events-auto flex max-w-full flex-wrap items-center gap-2 rounded-xl border border-white/15 bg-[#100e0b]/95 px-3 py-2 shadow-2xl backdrop-blur-md">
+               <span className="px-1 text-sm font-medium text-white">
+                  {count} sélectionné{count > 1 ? "s" : ""}
+               </span>
+
+               {typeof onSelectAll === "function" && count < allCount ? (
+                  <Button
+                     type="button"
+                     size="sm"
+                     variant="ghost"
+                     disabled={pending}
+                     className="text-white/80 hover:text-white"
+                     onClick={onSelectAll}
+                  >
+                     Tout sélectionner
+                  </Button>
+               ) : null}
+
+               {view === "browse" ? (
+                  <>
+                     <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={pending || fileCount === 0}
+                        className="border-white/25 bg-white/5 text-white hover:bg-white/10"
+                        onClick={onDownload}
+                        title={
+                           fileCount === 0
+                              ? "Sélectionnez au moins un fichier"
+                              : undefined
+                        }
+                     >
+                        {pending ? (
+                           <Loader2 className="animate-spin" />
+                        ) : (
+                           <Download className="size-4" />
+                        )}
+                        Télécharger
+                        {fileCount > 0 ? ` (${fileCount})` : ""}
+                     </Button>
+                     <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={pending || fileCount === 0}
+                        className="border-white/25 bg-white/5 text-white hover:bg-white/10"
+                        onClick={() => setTagsOpen(true)}
+                        title={
+                           fileCount === 0
+                              ? "Sélectionnez au moins un fichier"
+                              : undefined
+                        }
+                     >
+                        <Tags className="size-4" />
+                        Tags
+                        {fileCount > 0 ? ` (${fileCount})` : ""}
+                     </Button>
+                     <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={pending}
+                        className="border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 hover:text-red-200"
+                        onClick={() =>
+                           setConfirm({
+                              type: "trash",
+                              title: "Supprimer la sélection ?",
+                              description: `${count} élément${
+                                 count > 1 ? "s" : ""
+                              } seront envoyés à la corbeille.`,
+                              confirmLabel: "Supprimer",
+                           })
+                        }
+                     >
+                        <Trash2 className="size-4" />
+                        Supprimer
+                     </Button>
+                  </>
+               ) : (
+                  <>
+                     <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={pending}
+                        className="border-white/25 bg-white/5 text-white hover:bg-white/10"
+                        onClick={() =>
+                           run(() => bulkRestoreItems({ fileIds, folderIds }), {
+                              successMessage: "Sélection restaurée",
+                           })
+                        }
+                     >
+                        {pending ? (
+                           <Loader2 className="animate-spin" />
+                        ) : (
+                           <RotateCcw className="size-4" />
+                        )}
+                        Restaurer
+                     </Button>
+                     <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={pending}
+                        className="border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 hover:text-red-200"
+                        onClick={() =>
+                           setConfirm({
+                              type: "delete-forever",
+                              title: "Supprimer définitivement ?",
+                              description: `${count} élément${
+                                 count > 1 ? "s" : ""
+                              } seront effacés définitivement (y compris sur S3).`,
+                              confirmLabel: "Supprimer définitivement",
+                           })
+                        }
+                     >
+                        <Eraser className="size-4" />
+                        Définitif
+                     </Button>
+                  </>
+               )}
+
+               <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  disabled={pending}
+                  aria-label="Effacer la sélection"
+                  className="text-white/70 hover:text-white"
+                  onClick={onClear}
+               >
+                  <X className="size-4" />
+               </Button>
+            </div>
+         </div>
+
+         <Dialog
+            open={tagsOpen}
+            onOpenChange={(open) => {
+               if (!pending) {
+                  setTagsOpen(open);
+                  if (!open) setTagsDraft("");
+               }
+            }}
+         >
+            <DialogContent className="border-white/10 bg-[#161310] text-white sm:max-w-md">
+               <DialogHeader>
+                  <DialogTitle>Ajouter des tags</DialogTitle>
+                  <DialogDescription className="text-white/60">
+                     Les tags seront ajoutés à {fileCount} fichier
+                     {fileCount > 1 ? "s" : ""} (fusionnés avec les tags
+                     existants).
+                     {folderIds.length > 0
+                        ? " Les dossiers sélectionnés sont ignorés."
+                        : ""}
+                  </DialogDescription>
+               </DialogHeader>
+               <Input
+                  value={tagsDraft}
+                  disabled={pending}
+                  placeholder="ex. vacances, 2024, famille"
+                  className="border-white/15 bg-black/30 text-white"
+                  onChange={(event) => setTagsDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                     if (event.key === "Enter") onAddTags();
+                  }}
+                  autoFocus
+               />
+               <DialogFooter>
+                  <Button
+                     type="button"
+                     variant="ghost"
+                     disabled={pending}
+                     className="text-white/70 hover:text-white"
+                     onClick={() => setTagsOpen(false)}
+                  >
+                     Annuler
+                  </Button>
+                  <Button
+                     type="button"
+                     disabled={pending || !tagsDraft.trim()}
+                     onClick={onAddTags}
+                  >
+                     {pending ? <Loader2 className="animate-spin" /> : null}
+                     Ajouter
+                  </Button>
+               </DialogFooter>
+            </DialogContent>
+         </Dialog>
+
+         <ConfirmDialog
+            open={Boolean(confirm)}
+            onOpenChange={(open) => {
+               if (!open && !pending) setConfirm(null);
+            }}
+            title={confirm?.title}
+            description={confirm?.description}
+            confirmLabel={confirm?.confirmLabel || "Confirmer"}
+            destructive
+            pending={pending}
+            onConfirm={() => {
+               if (confirm?.type === "trash") {
+                  run(() => bulkTrashItems({ fileIds, folderIds }), {
+                     successMessage: "Sélection mise à la corbeille",
+                  });
+                  return;
+               }
+               if (confirm?.type === "delete-forever") {
+                  run(() => bulkDeletePermanentItems({ fileIds, folderIds }), {
+                     successMessage: "Sélection supprimée définitivement",
+                  });
+               }
+            }}
+         />
+      </>
+   );
+}
