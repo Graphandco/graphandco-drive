@@ -29,6 +29,8 @@ export function DriveContent({
   folder = null,
   openFileId,
   error = null,
+  galleryMode = false,
+  filesPagination = null,
 }) {
   const spaceConfig = getSpaceConfig(space);
   const folderId = folder?.id || spaceConfig.rootFolderId;
@@ -132,6 +134,8 @@ export function DriveContent({
         }
         openFileId={openFileId}
         trashCount={folders.length + files.length}
+        galleryMode={galleryMode}
+        filesPagination={filesPagination}
       />
     </div>
   );

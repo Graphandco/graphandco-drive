@@ -2,14 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 
-import { getSpaceConfig } from "@/lib/drive";
+import { getSpaceConfig, isGalleryHome, FILES_PAGE_SIZE } from "@/lib/drive";
 import { query } from "@/lib/db";
 import {
   getFolder,
   getFolderPath,
   listFolders,
 } from "@/actions/folders";
-import { getFolderStats, listFiles } from "@/actions/files";
+import {
+  getFolderStats,
+  getSpaceStats,
+  listFilesPaginated,
+} from "@/actions/files";
 import { deleteObject } from "@/lib/storage";
 
 export async function getDriveContents({
@@ -35,6 +39,8 @@ export async function getDriveContents({
         folders: [],
         files: [],
         stats: { fileCount: 0, totalBytes: 0 },
+        galleryMode: false,
+        filesPagination: null,
       };
     }
 
@@ -47,15 +53,31 @@ export async function getDriveContents({
         folders: [],
         files: [],
         stats: { fileCount: 0, totalBytes: 0 },
+        galleryMode: false,
+        filesPagination: null,
       };
     }
+
+    const galleryMode = isGalleryHome({
+      space,
+      folderId: resolvedFolderId,
+      view,
+    });
 
     const [pathResult, foldersResult, filesResult, statsResult] =
       await Promise.all([
         getFolderPath(resolvedFolderId),
         listFolders({ parentId: resolvedFolderId, space, view }),
-        listFiles({ folderId: resolvedFolderId, space, view }),
-        getFolderStats(resolvedFolderId),
+        listFilesPaginated({
+          space,
+          folderId: galleryMode ? null : resolvedFolderId,
+          view,
+          limit: galleryMode ? FILES_PAGE_SIZE : 10000,
+          offset: 0,
+        }),
+        galleryMode
+          ? getSpaceStats(space)
+          : getFolderStats(resolvedFolderId),
       ]);
 
     return {
@@ -65,6 +87,8 @@ export async function getDriveContents({
       folders: foldersResult.data || [],
       files: filesResult.data || [],
       stats: statsResult.data || { fileCount: 0, totalBytes: 0 },
+      galleryMode,
+      filesPagination: filesResult.pagination || null,
       error:
         foldersResult.error ||
         filesResult.error ||
@@ -76,7 +100,7 @@ export async function getDriveContents({
 
   const [foldersResult, filesResult] = await Promise.all([
     listFolders({ space, view }),
-    listFiles({ space, view }),
+    listFilesPaginated({ space, view, limit: 10000, offset: 0 }),
   ]);
 
   return {
@@ -86,11 +110,13 @@ export async function getDriveContents({
     folders: foldersResult.data || [],
     files: filesResult.data || [],
     stats: { fileCount: 0, totalBytes: 0 },
+    galleryMode: false,
+    filesPagination: filesResult.pagination || null,
     error: foldersResult.error || filesResult.error || null,
   };
 }
 
-/** Purge définitive de toute la corbeille (DB + S3, y compris dossiers vides) */
+/** Purge définitive de toute la corbeille (DB + S3) */
 export async function emptyTrash() {
   try {
     const files = await query(
@@ -125,41 +151,12 @@ export async function emptyTrash() {
       getSpaceConfig("regis").rootFolderId,
     ];
 
-    const deletedFolders = await query(
-      `SELECT id, space, name
-       FROM folders
-       WHERE deleted_at IS NOT NULL
-         AND id NOT IN (?, ?, ?)
-       ORDER BY id DESC`,
-      rootIds
-    );
-
-    const { buildFolderPrefix, deletePrefix } = await import("@/lib/storage");
-
-    for (const folder of deletedFolders) {
-      const space = getSpaceConfig(folder.space);
-      const pathResult = await getFolderPath(folder.id);
-      const prefix = buildFolderPrefix(
-        pathResult.data || [],
-        space.rootFolderId
-      );
-      if (!prefix) continue;
-
-      await deletePrefix({
-        location: space.storageLocation || folder.space || "sixmyk",
-        prefix,
-      }).catch((error) => {
-        console.error("emptyTrash/prefix:", error);
-      });
-    }
-
     await query(`DELETE FROM files WHERE deleted_at IS NOT NULL`);
 
     await query(
       `DELETE FROM folders
        WHERE deleted_at IS NOT NULL
-         AND id NOT IN (?, ?, ?)
-       ORDER BY id DESC`,
+         AND id NOT IN (?, ?, ?)`,
       rootIds
     );
 
@@ -173,7 +170,6 @@ export async function emptyTrash() {
       success: true,
       data: {
         deletedFiles: files.length,
-        deletedFolders: deletedFolders.length,
       },
     };
   } catch (error) {

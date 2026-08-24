@@ -1,5 +1,7 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,10 +26,17 @@ export function ConfirmDialog({
   cancelLabel = "Annuler",
   destructive = false,
   pending = false,
+  pendingLabel = "Traitement en cours…",
   onConfirm,
 }) {
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
+    <AlertDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (pending) return;
+        onOpenChange?.(next);
+      }}
+    >
       <AlertDialogContent className="border-0 bg-[#14110e] text-white shadow-2xl ring-0 outline-none">
         <AlertDialogHeader>
           <AlertDialogTitle className="text-white">{title}</AlertDialogTitle>
@@ -37,6 +46,18 @@ export function ConfirmDialog({
             </AlertDialogDescription>
           ) : null}
         </AlertDialogHeader>
+
+        {pending ? (
+          <div
+            className="flex items-center gap-2.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white/80"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
+            <span>{pendingLabel}</span>
+          </div>
+        ) : null}
+
         <AlertDialogFooter>
           <AlertDialogCancel
             disabled={pending}
@@ -53,10 +74,12 @@ export function ConfirmDialog({
             }
             onClick={(event) => {
               event.preventDefault();
+              if (pending) return;
               onConfirm?.();
             }}
           >
-            {confirmLabel}
+            {pending ? <Loader2 className="animate-spin" /> : null}
+            {pending ? "Patientez…" : confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

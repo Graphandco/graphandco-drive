@@ -17,6 +17,8 @@ export function DrivePanel({
   isRootFolder = false,
   openFileId,
   trashCount,
+  galleryMode = false,
+  filesPagination = null,
 }) {
   const [layout, setLayout] = useState("grid");
 
@@ -53,8 +55,11 @@ export function DrivePanel({
         files={files}
         view={view}
         space={space}
+        folderId={folderId}
         openFileId={openFileId}
         layout={layout}
+        galleryMode={galleryMode}
+        filesPagination={filesPagination}
       />
     </>
   );

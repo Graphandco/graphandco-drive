@@ -18,8 +18,11 @@ function cacheKey(file) {
 }
 
 /**
- * @param {"contain" | "cover"} fit
- *   contain = ratio respecté (vues grille), cover = remplit le cadre (liste)
+ * @param {"contain" | "cover" | "masonry" | "cell"} fit
+ *   contain = hauteur fixe (legacy)
+ *   cover = remplit le cadre (liste)
+ *   masonry = largeur colonne, hauteur selon le ratio (CSS columns)
+ *   cell = cellule masonry JS à dimensions fixes
  */
 export function FileThumbnail({
   file,
@@ -121,13 +124,15 @@ export function FileThumbnail({
   }
 
   const contain = fit === "contain";
+  const masonry = fit === "masonry";
+  const cell = fit === "cell";
   const showPhoto = showImage && src && !failed;
 
   const placeholder = (
     <div
       className={cn(
         "flex items-center justify-center bg-white/5 text-muted-foreground",
-        contain ? "absolute inset-0" : "size-full",
+        contain || masonry || cell ? "absolute inset-0" : "size-full",
         className
       )}
     >
@@ -145,11 +150,16 @@ export function FileThumbnail({
       src={src}
       alt={file.name}
       decoding="async"
+      draggable={false}
       className={cn(
         "transition-opacity duration-300 ease-out",
-        contain
-          ? "h-full w-auto max-w-none object-contain"
-          : "size-full object-cover",
+        masonry
+          ? "block h-auto w-full object-contain"
+          : cell
+            ? "size-full object-contain"
+            : contain
+            ? "h-full w-auto max-w-none object-contain"
+            : "size-full object-cover",
         ready ? "opacity-100" : "opacity-0",
         className
       )}
@@ -169,7 +179,13 @@ export function FileThumbnail({
         type="button"
         className={cn(
           "cursor-pointer overflow-hidden disabled:opacity-70",
-          contain ? "relative h-full w-auto" : "absolute inset-0 size-full"
+          masonry
+            ? "relative block w-full"
+            : cell
+              ? "absolute inset-0 size-full"
+              : contain
+              ? "relative h-full w-auto"
+              : "absolute inset-0 size-full"
         )}
         onClick={handleOpen}
         disabled={opening}
@@ -180,7 +196,13 @@ export function FileThumbnail({
     ) : (
       <div
         className={
-          contain ? "relative h-full w-auto" : "absolute inset-0"
+          masonry
+            ? "relative block w-full"
+            : cell
+              ? "absolute inset-0 size-full"
+              : contain
+              ? "relative h-full w-auto"
+              : "absolute inset-0"
         }
       >
         {image}
@@ -193,14 +215,24 @@ export function FileThumbnail({
       ref={rootRef}
       className={cn(
         "relative overflow-hidden",
-        contain ? "h-full w-auto" : "size-full"
+        masonry ? "w-full" : cell ? "size-full" : contain ? "h-full w-auto" : "size-full"
       )}
       style={
-        contain && aspectRatio
-          ? { aspectRatio: String(aspectRatio), height: "100%" }
-          : contain
-            ? { aspectRatio: "4 / 3", height: "100%" }
-            : undefined
+        cell
+          ? undefined
+          : masonry
+          ? {
+              aspectRatio: aspectRatio
+                ? String(aspectRatio)
+                : showImage
+                  ? "4 / 3"
+                  : "1 / 1",
+            }
+          : contain && aspectRatio
+            ? { aspectRatio: String(aspectRatio), height: "100%" }
+            : contain
+              ? { aspectRatio: "4 / 3", height: "100%" }
+              : undefined
       }
     >
       {placeholder}

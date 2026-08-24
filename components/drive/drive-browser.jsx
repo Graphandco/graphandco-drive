@@ -28,6 +28,8 @@ export async function DriveBrowser({
       folder={contents.folder}
       openFileId={openFileId}
       error={contents.error || null}
+      galleryMode={contents.galleryMode || false}
+      filesPagination={contents.filesPagination || null}
     />
   );
 }

@@ -178,67 +178,6 @@ export async function renameFolder({ id, name }) {
       return { success: true, data: { id, name: folderName } };
     }
 
-    const pathResult = await getFolderPath(id);
-    const oldPath = pathResult.data || [];
-    const { buildFolderPrefix, renamePrefix, replaceKeyPrefix } = await import(
-      "@/lib/storage"
-    );
-
-    const oldPrefix = buildFolderPrefix(oldPath, space.rootFolderId);
-    const newPath = oldPath.map((folder) =>
-      Number(folder.id) === Number(id)
-        ? { ...folder, name: folderName }
-        : folder
-    );
-    const newPrefix = buildFolderPrefix(newPath, space.rootFolderId);
-
-    if (oldPrefix && newPrefix && oldPrefix !== newPrefix) {
-      const location =
-        space.storageLocation || existing.data.space || "sixmyk";
-
-      await renamePrefix({
-        location,
-        fromPrefix: oldPrefix,
-        toPrefix: newPrefix,
-      });
-
-      const treeIds = await getFolderTreeIds(id);
-      if (treeIds.length) {
-        const placeholders = treeIds.map(() => "?").join(", ");
-        const files = await query(
-          `SELECT id, storage_key, thumbnail_key
-           FROM files
-           WHERE folder_id IN (${placeholders})`,
-          treeIds
-        );
-
-        for (const file of files) {
-          const nextStorageKey = replaceKeyPrefix(
-            file.storage_key,
-            oldPrefix,
-            newPrefix
-          );
-          const nextThumbnailKey = replaceKeyPrefix(
-            file.thumbnail_key,
-            oldPrefix,
-            newPrefix
-          );
-
-          if (
-            nextStorageKey !== file.storage_key ||
-            nextThumbnailKey !== file.thumbnail_key
-          ) {
-            await query(
-              `UPDATE files
-               SET storage_key = ?, thumbnail_key = ?
-               WHERE id = ?`,
-              [nextStorageKey, nextThumbnailKey, file.id]
-            );
-          }
-        }
-      }
-    }
-
     await query(`UPDATE folders SET name = ? WHERE id = ?`, [
       folderName,
       id,
@@ -272,13 +211,20 @@ export async function trashFolder(id) {
 
     const placeholders = treeIds.map(() => "?").join(", ");
 
-    await query(
-      `UPDATE files
-       SET deleted_at = CURRENT_TIMESTAMP
-       WHERE folder_id IN (${placeholders})
-         AND deleted_at IS NULL`,
-      treeIds
+    const exclusiveFileIds = await import("@/lib/file-folders").then((m) =>
+      m.getFileIdsExclusiveToFolders(treeIds)
     );
+
+    if (exclusiveFileIds.length) {
+      const filePlaceholders = exclusiveFileIds.map(() => "?").join(", ");
+      await query(
+        `UPDATE files
+         SET deleted_at = CURRENT_TIMESTAMP
+         WHERE id IN (${filePlaceholders})
+           AND deleted_at IS NULL`,
+        exclusiveFileIds
+      );
+    }
 
     await query(
       `UPDATE folders
@@ -316,8 +262,13 @@ export async function restoreFolder(id) {
       `UPDATE folders SET deleted_at = NULL WHERE id IN (${placeholders})`,
       treeIds
     );
+
     await query(
-      `UPDATE files SET deleted_at = NULL WHERE folder_id IN (${placeholders})`,
+      `UPDATE files f
+       INNER JOIN file_folders ff ON ff.file_id = f.id
+       SET f.deleted_at = NULL
+       WHERE ff.folder_id IN (${placeholders})
+         AND f.deleted_at IS NOT NULL`,
       treeIds
     );
 
@@ -348,58 +299,7 @@ export async function deleteFolderPermanent(id) {
       return { success: false, error: "Dossier introuvable." };
     }
 
-    const placeholders = treeIds.map(() => "?").join(", ");
-    const files = await query(
-      `SELECT id, storage_key, thumbnail_key, storage_location
-       FROM files
-       WHERE folder_id IN (${placeholders})`,
-      treeIds
-    );
-
-    const { buildFolderPrefix, deleteObject, deletePrefix } = await import(
-      "@/lib/storage"
-    );
-
-    for (const file of files) {
-      const location = file.storage_location || "sixmyk";
-      if (file.storage_key) {
-        await deleteObject({
-          location,
-          key: file.storage_key,
-        }).catch((error) => {
-          console.error("deleteFolderPermanent/storage:", error);
-        });
-      }
-      if (file.thumbnail_key) {
-        await deleteObject({
-          location,
-          key: file.thumbnail_key,
-        }).catch((error) => {
-          console.error("deleteFolderPermanent/thumbnail:", error);
-        });
-      }
-    }
-
-    // Purge du préfixe S3 (fichiers restants + marqueur dossier vide SeaweedFS)
-    const pathResult = await getFolderPath(id);
-    const prefix = buildFolderPrefix(
-      pathResult.data || [],
-      space.rootFolderId
-    );
-    if (prefix) {
-      await deletePrefix({
-        location: space.storageLocation || existing.data.space || "sixmyk",
-        prefix,
-      }).catch((error) => {
-        console.error("deleteFolderPermanent/prefix:", error);
-      });
-    }
-
-    await query(
-      `DELETE FROM files WHERE folder_id IN (${placeholders})`,
-      treeIds
-    );
-    // CASCADE sur parent_id : supprimer la racine du sous-arbre suffit
+    // Supprime le dossier (CASCADE file_folders) — les fichiers S3 restent intacts
     await query(`DELETE FROM folders WHERE id = ?`, [id]);
 
     revalidateDrive(existing.data.space);

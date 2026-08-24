@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import {
    Check,
    Download,
@@ -11,6 +11,7 @@ import {
    Eraser,
    X,
 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
 
 import {
@@ -20,6 +21,7 @@ import {
    bulkTrashItems,
    getFileDownloadUrl,
 } from "@/actions";
+import { BusyOverlay } from "@/components/drive/busy-overlay";
 import { ConfirmDialog } from "@/components/drive/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,6 +33,8 @@ import {
    DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { useBusyAction } from "@/hooks/use-busy-action";
+import { slideUpIn, springSnappy } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 export function SelectionCheckbox({
@@ -40,26 +44,41 @@ export function SelectionCheckbox({
    visible = true,
 }) {
    return (
-      <button
+      <motion.button
          type="button"
          role="checkbox"
          aria-checked={selected}
          aria-label={selected ? "Désélectionner" : "Sélectionner"}
          className={cn(
-            "flex size-5 items-center justify-center rounded border border-white/40 bg-black/55 text-white shadow-sm transition",
+            "flex size-5 items-center justify-center rounded border border-white/40 bg-black/55 text-white shadow-sm",
             "hover:border-primary hover:bg-black/70",
             selected && "border-primary bg-primary text-primary-foreground",
             !visible && "pointer-events-none opacity-0",
             className,
          )}
+         whileTap={{ scale: 0.88 }}
+         animate={{ scale: selected ? 1.05 : 1 }}
+         transition={springSnappy}
          onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
             onChange(!selected, event);
          }}
       >
-         {selected ? <Check className="size-3" strokeWidth={3} /> : null}
-      </button>
+         <AnimatePresence initial={false}>
+            {selected ? (
+               <motion.span
+                  key="check"
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0, opacity: 0 }}
+                  transition={springSnappy}
+               >
+                  <Check className="size-3" strokeWidth={3} />
+               </motion.span>
+            ) : null}
+         </AnimatePresence>
+      </motion.button>
    );
 }
 
@@ -71,14 +90,12 @@ export function BulkActionBar({
    onSelectAll,
    onDone,
 }) {
-   const [pending, startTransition] = useTransition();
+   const { isBusy: pending, runBusy } = useBusyAction();
    const [tagsOpen, setTagsOpen] = useState(false);
    const [tagsDraft, setTagsDraft] = useState("");
    const [confirm, setConfirm] = useState(null);
 
    const count = selectedItems.length;
-   if (!count) return null;
-
    const fileIds = selectedItems
       .filter((item) => item.kind === "file")
       .map((item) => item.id);
@@ -87,8 +104,15 @@ export function BulkActionBar({
       .map((item) => item.id);
    const fileCount = fileIds.length;
 
+   const busyLabel =
+      confirm?.type === "delete-forever"
+         ? "Suppression définitive…"
+         : confirm?.type === "trash"
+           ? "Mise à la corbeille…"
+           : "Traitement en cours…";
+
    function run(action, { successMessage } = {}) {
-      startTransition(async () => {
+      runBusy(async () => {
          const result = await action();
          if (!result?.success) {
             toast.error(result?.error || "Action impossible");
@@ -121,7 +145,7 @@ export function BulkActionBar({
    function onDownload() {
       if (!fileCount) return;
 
-      startTransition(async () => {
+      runBusy(async () => {
          let ok = 0;
          const errors = [];
 
@@ -164,8 +188,17 @@ export function BulkActionBar({
 
    return (
       <>
-         <div className="pointer-events-none fixed inset-x-0 bottom-16 z-50 flex justify-center px-3">
-            <div className="pointer-events-auto flex max-w-full flex-wrap items-center gap-2 rounded-xl border border-white/15 bg-[#100e0b]/95 px-3 py-2 shadow-2xl backdrop-blur-md">
+         <BusyOverlay show={pending && Boolean(confirm)} label={busyLabel} />
+
+         <AnimatePresence>
+            {count > 0 ? (
+               <div className="pointer-events-none fixed inset-x-0 bottom-16 z-50 flex justify-center px-3">
+                  <motion.div
+                     key="bulk-bar"
+                     className="pointer-events-auto flex max-w-full flex-wrap items-center gap-2 rounded-xl border border-white/15 bg-[#100e0b]/95 px-3 py-2 shadow-2xl backdrop-blur-md"
+                     {...slideUpIn}
+                     transition={springSnappy}
+                  >
                <span className="px-1 text-sm font-medium text-white">
                   {count} sélectionné{count > 1 ? "s" : ""}
                </span>
@@ -299,8 +332,10 @@ export function BulkActionBar({
                >
                   <X className="size-4" />
                </Button>
-            </div>
-         </div>
+                  </motion.div>
+               </div>
+            ) : null}
+         </AnimatePresence>
 
          <Dialog
             open={tagsOpen}
@@ -366,6 +401,7 @@ export function BulkActionBar({
             confirmLabel={confirm?.confirmLabel || "Confirmer"}
             destructive
             pending={pending}
+            pendingLabel={busyLabel}
             onConfirm={() => {
                if (confirm?.type === "trash") {
                   run(() => bulkTrashItems({ fileIds, folderIds }), {

@@ -1,6 +1,9 @@
 "use client";
 
+import { motion } from "motion/react";
+
 import { useTheme } from "@/components/theme-provider";
+import { springSnappy } from "@/lib/motion";
 import { THEMES } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
@@ -189,16 +192,21 @@ export function ThemePicker() {
          </div>
 
          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            {THEMES.map((item) => {
+            {THEMES.map((item, index) => {
                const selected = theme === item.id;
                return (
-                  <button
+                  <motion.button
                      key={item.id}
                      type="button"
                      onClick={() => setTheme(item.id)}
                      aria-pressed={selected}
+                     initial={{ opacity: 0, y: 8 }}
+                     animate={{ opacity: 1, y: 0 }}
+                     transition={{ ...springSnappy, delay: index * 0.04 }}
+                     whileHover={{ y: -2 }}
+                     whileTap={{ scale: 0.98 }}
                      className={cn(
-                        "rounded-xl border p-3 text-left transition-colors",
+                        "rounded-xl border p-3 text-left",
                         selected
                            ? "border-primary bg-primary/10 ring-1 ring-primary/40"
                            : "border-white/10 bg-black/20 hover:border-white/20 hover:bg-black/30",
@@ -209,7 +217,7 @@ export function ThemePicker() {
                      <p className="mt-0.5 text-xs text-muted-foreground">
                         {item.description}
                      </p>
-                  </button>
+                  </motion.button>
                );
             })}
          </div>

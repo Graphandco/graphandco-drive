@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Upload } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
 
 import { getSpaceConfig } from "@/lib/drive";
+import { fadeScaleIn, springSoft } from "@/lib/motion";
 import {
   collectDataTransferEntries,
   uploadEntryTree,
@@ -50,7 +52,9 @@ export function DriveDropZone({ children }) {
     }
 
     function isFileDrag(event) {
-      return Array.from(event.dataTransfer?.types || []).includes("Files");
+      const types = Array.from(event.dataTransfer?.types || []);
+      if (types.includes("application/x-graphandco-drive-items")) return false;
+      return types.includes("Files");
     }
 
     function onDragEnter(event) {
@@ -158,21 +162,30 @@ export function DriveDropZone({ children }) {
   return (
     <>
       {children}
-      <div
-        aria-hidden={!active}
-        className={cn(
-          "pointer-events-none fixed inset-0 z-[100] flex items-center justify-center border-4 border-dashed border-primary/70 bg-[#100e0b]/92 transition-opacity duration-150",
-          active ? "opacity-100" : "opacity-0"
-        )}
-      >
-        <div className="flex flex-col items-center gap-3 text-primary">
-          <Upload className="size-10" />
-          <p className="text-lg font-medium">Déposez fichiers ou dossiers</p>
-          <p className="text-sm text-primary/80">
-            L’arborescence sera reconstituée dans le dossier en cours
-          </p>
-        </div>
-      </div>
+      <AnimatePresence>
+        {active ? (
+          <motion.div
+            key="upload-overlay"
+            aria-hidden={!active}
+            className="pointer-events-none fixed inset-0 z-[100] flex items-center justify-center border-4 border-dashed border-primary/70 bg-[#100e0b]/92"
+            {...fadeScaleIn}
+            transition={springSoft}
+          >
+            <motion.div
+              className="flex flex-col items-center gap-3 text-primary"
+              initial={{ y: 12, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ ...springSoft, delay: 0.05 }}
+            >
+              <Upload className="size-10" />
+              <p className="text-lg font-medium">Déposez fichiers ou dossiers</p>
+              <p className="text-sm text-primary/80">
+                L’arborescence sera reconstituée dans le dossier en cours
+              </p>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </>
   );
 }

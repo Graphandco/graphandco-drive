@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 
 import { getFolder } from "@/actions/folders";
 import { query } from "@/lib/db";
-import { getSpaceConfig } from "@/lib/drive";
+import { linkFileToFolder } from "@/lib/file-folders";
+import { getSpaceConfig, FILES_PAGE_SIZE } from "@/lib/drive";
 
 function revalidateDrive(spaceKey = "sixmyk") {
   const space = getSpaceConfig(spaceKey);
@@ -14,12 +15,37 @@ function revalidateDrive(spaceKey = "sixmyk") {
   revalidatePath("/", "layout");
 }
 
-const FILE_COLUMNS = `id, folder_id, space, name, mime_type, size_bytes, storage_location, storage_key, thumbnail_key, tags, captured_at, is_shared, deleted_at, created_at, updated_at`;
+const FILE_COLUMNS = `f.id, f.space, f.name, f.mime_type, f.size_bytes, f.storage_location, f.storage_key, f.thumbnail_key, f.tags, f.captured_at, f.width_px, f.height_px, f.is_shared, f.deleted_at, f.created_at, f.updated_at`;
+
+const FILE_ORDER_BROWSE = `ORDER BY f.captured_at DESC, f.created_at DESC, f.name ASC`;
+
+function normalizeLimit(limit) {
+  const value = Number(limit);
+  if (!Number.isFinite(value) || value < 1) return FILES_PAGE_SIZE;
+  return Math.min(Math.round(value), 200);
+}
+
+function normalizeOffset(offset) {
+  const value = Number(offset);
+  if (!Number.isFinite(value) || value < 0) return 0;
+  return Math.round(value);
+}
+
+/** LIMIT/OFFSET en littéraux (mysql2 ne supporte pas toujours les ? ici). */
+function paginationClause(limit, offset) {
+  const pageLimit = normalizeLimit(limit);
+  const pageOffset = normalizeOffset(offset);
+  return {
+    pageLimit,
+    pageOffset,
+    sql: `LIMIT ${pageLimit} OFFSET ${pageOffset}`,
+  };
+}
 
 export async function getFile(fileId) {
   try {
     const rows = await query(
-      `SELECT ${FILE_COLUMNS}
+      `SELECT id, folder_id, space, name, mime_type, size_bytes, storage_location, storage_key, thumbnail_key, tags, captured_at, width_px, height_px, is_shared, deleted_at, created_at, updated_at
        FROM files
        WHERE id = ?
        LIMIT 1`,
@@ -40,52 +66,145 @@ export async function getFile(fileId) {
   }
 }
 
+/** Compte les fichiers d’un espace (galerie accueil). */
+export async function countFilesInSpace(space = "sixmyk") {
+  const rows = await query(
+    `SELECT COUNT(*) AS total
+     FROM files f
+     WHERE f.space = ?
+       AND f.deleted_at IS NULL`,
+    [space]
+  );
+  return Number(rows[0]?.total || 0);
+}
+
+/** Compte les fichiers liés à un dossier. */
+export async function countFilesInFolder(folderId) {
+  const rows = await query(
+    `SELECT COUNT(DISTINCT f.id) AS total
+     FROM files f
+     INNER JOIN file_folders ff ON ff.file_id = f.id
+     WHERE ff.folder_id = ?
+       AND f.deleted_at IS NULL`,
+    [Number(folderId)]
+  );
+  return Number(rows[0]?.total || 0);
+}
+
+/**
+ * Liste paginée : folderId = null → tout l’espace ; sinon fichiers du dossier.
+ */
+export async function listFilesPaginated({
+  space = "sixmyk",
+  folderId = null,
+  view = "browse",
+  limit = FILES_PAGE_SIZE,
+  offset = 0,
+} = {}) {
+  try {
+    const { pageLimit, pageOffset, sql: pageSql } = paginationClause(
+      limit,
+      offset
+    );
+
+    if (view === "trash") {
+      const rows = await query(
+        `SELECT id, folder_id, space, name, mime_type, size_bytes, storage_location, storage_key, thumbnail_key, tags, captured_at, width_px, height_px, is_shared, deleted_at, created_at, updated_at
+         FROM files
+         WHERE deleted_at IS NOT NULL
+         ORDER BY deleted_at DESC
+         ${pageSql}`
+      );
+      const countRows = await query(
+        `SELECT COUNT(*) AS total FROM files WHERE deleted_at IS NOT NULL`
+      );
+      const total = Number(countRows[0]?.total || 0);
+      return {
+        success: true,
+        data: rows,
+        pagination: {
+          total,
+          limit: pageLimit,
+          offset: pageOffset,
+          hasMore: pageOffset + rows.length < total,
+        },
+      };
+    }
+
+    if (folderId == null) {
+      const rows = await query(
+        `SELECT ${FILE_COLUMNS}
+         FROM files f
+         WHERE f.space = ?
+           AND f.deleted_at IS NULL
+         ${FILE_ORDER_BROWSE}
+         ${pageSql}`,
+        [space]
+      );
+      const total = await countFilesInSpace(space);
+      return {
+        success: true,
+        data: rows,
+        pagination: {
+          total,
+          limit: pageLimit,
+          offset: pageOffset,
+          hasMore: pageOffset + rows.length < total,
+        },
+      };
+    }
+
+    const rows = await query(
+      `SELECT ${FILE_COLUMNS}
+       FROM files f
+       INNER JOIN file_folders ff ON ff.file_id = f.id
+       WHERE ff.folder_id = ?
+         AND f.deleted_at IS NULL
+       ${FILE_ORDER_BROWSE}
+       ${pageSql}`,
+      [Number(folderId)]
+    );
+    const total = await countFilesInFolder(folderId);
+    return {
+      success: true,
+      data: rows,
+      pagination: {
+        total,
+        limit: pageLimit,
+        offset: pageOffset,
+        hasMore: pageOffset + rows.length < total,
+      },
+    };
+  } catch (error) {
+    console.error("listFilesPaginated:", error);
+    return {
+      success: false,
+      error: error?.message || "Impossible de lister les fichiers.",
+      data: [],
+      pagination: { total: 0, limit: FILES_PAGE_SIZE, offset: 0, hasMore: false },
+    };
+  }
+}
+
 export async function listFiles({
   folderId = null,
   space = "sixmyk",
   view = "browse",
 } = {}) {
-  try {
-    if (view === "trash") {
-      const rows = await query(
-        `SELECT ${FILE_COLUMNS}
-         FROM files
-         WHERE deleted_at IS NOT NULL
-         ORDER BY deleted_at DESC`
-      );
-      return { success: true, data: rows };
-    }
+  const result = await listFilesPaginated({
+    space,
+    folderId,
+    view,
+    limit: view === "trash" ? 10000 : 10000,
+    offset: 0,
+  });
 
-
-    const rows =
-      folderId == null
-        ? await query(
-            `SELECT ${FILE_COLUMNS}
-             FROM files
-             WHERE folder_id IS NULL
-               AND space = ?
-               AND deleted_at IS NULL
-             ORDER BY name ASC`,
-            [space]
-          )
-        : await query(
-            `SELECT ${FILE_COLUMNS}
-             FROM files
-             WHERE folder_id = ?
-               AND deleted_at IS NULL
-             ORDER BY name ASC`,
-            [folderId]
-          );
-
-    return { success: true, data: rows };
-  } catch (error) {
-    console.error("listFiles:", error);
-    return {
-      success: false,
-      error: error?.message || "Impossible de lister les fichiers.",
-      data: [],
-    };
-  }
+  return {
+    success: result.success,
+    data: result.data,
+    error: result.error,
+    pagination: result.pagination,
+  };
 }
 
 export async function createFileRecord({
@@ -98,6 +217,8 @@ export async function createFileRecord({
   thumbnailKey = null,
   storageLocation = "sixmyk",
   capturedAt = null,
+  widthPx = null,
+  heightPx = null,
 }) {
   const fileName = typeof name === "string" ? name.trim() : "";
 
@@ -130,12 +251,12 @@ export async function createFileRecord({
 
     const result = await query(
       `INSERT INTO files (
-         folder_id, space, name, mime_type, size_bytes,
-         storage_location, storage_key, thumbnail_key, captured_at
+         space, name, mime_type, size_bytes,
+         storage_location, storage_key, thumbnail_key, captured_at,
+         width_px, height_px
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        folderId,
         resolvedSpace,
         fileName,
         mimeType,
@@ -144,22 +265,30 @@ export async function createFileRecord({
         storageKey,
         thumbnailKey,
         capturedValue,
+        widthPx != null && widthPx > 0 ? Math.round(widthPx) : null,
+        heightPx != null && heightPx > 0 ? Math.round(heightPx) : null,
       ]
     );
+
+    const fileId = result.insertId;
+    await linkFileToFolder(fileId, folderId);
 
     revalidateDrive(resolvedSpace);
 
     return {
       success: true,
       data: {
-        id: result.insertId,
-        folder_id: folderId,
+        id: fileId,
         name: fileName,
         space: resolvedSpace,
         storage_location: resolvedLocation,
         storage_key: storageKey,
         thumbnail_key: thumbnailKey,
         captured_at: capturedValue,
+        width_px:
+          widthPx != null && widthPx > 0 ? Math.round(widthPx) : null,
+        height_px:
+          heightPx != null && heightPx > 0 ? Math.round(heightPx) : null,
       },
     };
   } catch (error) {
@@ -317,7 +446,6 @@ export async function deleteFilePermanent(id) {
   }
 }
 
-
 export async function getStorageStats() {
   try {
     const rows = await query(
@@ -345,7 +473,7 @@ export async function getStorageStats() {
   }
 }
 
-/** Stats fichiers d’un dossier (sous-arbre inclus) */
+/** Stats fichiers liés à un dossier ou sous-arbre. */
 export async function getFolderStats(folderId) {
   try {
     const id = Number(folderId);
@@ -357,33 +485,31 @@ export async function getFolderStats(folderId) {
       };
     }
 
-    const rows = await query(
+    const statsRows = await query(
       `WITH RECURSIVE folder_tree AS (
-         SELECT id
-         FROM folders
-         WHERE id = ?
-           AND deleted_at IS NULL
+         SELECT id FROM folders WHERE id = ? AND deleted_at IS NULL
          UNION ALL
-         SELECT f.id
-         FROM folders f
+         SELECT f.id FROM folders f
          INNER JOIN folder_tree ft ON f.parent_id = ft.id
          WHERE f.deleted_at IS NULL
        )
        SELECT
-         COUNT(files.id) AS file_count,
-         COALESCE(SUM(files.size_bytes), 0) AS total_bytes
-       FROM folder_tree
-       LEFT JOIN files
-         ON files.folder_id = folder_tree.id
-        AND files.deleted_at IS NULL`,
+         COUNT(*) AS file_count,
+         COALESCE(SUM(sub.size_bytes), 0) AS total_bytes
+       FROM (
+         SELECT DISTINCT f.id, f.size_bytes
+         FROM folder_tree ft
+         INNER JOIN file_folders ff ON ff.folder_id = ft.id
+         INNER JOIN files f ON f.id = ff.file_id AND f.deleted_at IS NULL
+       ) AS sub`,
       [id]
     );
 
     return {
       success: true,
       data: {
-        fileCount: Number(rows[0]?.file_count || 0),
-        totalBytes: Number(rows[0]?.total_bytes || 0),
+        fileCount: Number(statsRows[0]?.file_count || 0),
+        totalBytes: Number(statsRows[0]?.total_bytes || 0),
       },
     };
   } catch (error) {
@@ -396,3 +522,30 @@ export async function getFolderStats(folderId) {
   }
 }
 
+export async function getSpaceStats(space = "sixmyk") {
+  try {
+    const rows = await query(
+      `SELECT
+         COUNT(*) AS file_count,
+         COALESCE(SUM(size_bytes), 0) AS total_bytes
+       FROM files
+       WHERE space = ?
+         AND deleted_at IS NULL`,
+      [space]
+    );
+
+    return {
+      success: true,
+      data: {
+        fileCount: Number(rows[0]?.file_count || 0),
+        totalBytes: Number(rows[0]?.total_bytes || 0),
+      },
+    };
+  } catch (error) {
+    console.error("getSpaceStats:", error);
+    return {
+      success: false,
+      data: { fileCount: 0, totalBytes: 0 },
+    };
+  }
+}

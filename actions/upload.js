@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { createFileRecord, deleteFilePermanent, getFile } from "@/actions/files";
-import { getFolder, getFolderPath } from "@/actions/folders";
+import { getFolder } from "@/actions/folders";
 import { getSpaceConfig } from "@/lib/drive";
 import {
   buildObjectKey,
@@ -12,14 +12,13 @@ import {
   checkStorageHealth,
   deleteObject,
   getSignedDownloadUrl,
-  sanitizeFolderSegment,
   uploadObject,
 } from "@/lib/storage";
 import {
   buildThumbnailKey,
   createThumbnailBuffer,
 } from "@/lib/thumbnail";
-import { extractCapturedAt } from "@/lib/image-meta";
+import { extractCapturedAt, extractImageDimensions } from "@/lib/image-meta";
 
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
@@ -28,13 +27,6 @@ function revalidateDrive(spaceKey = "sixmyk") {
   revalidatePath(space.basePath);
   revalidatePath("/trash");
   revalidatePath("/settings/storage");
-}
-
-function folderPathSegments(pathFolders, rootFolderId) {
-  return (pathFolders || [])
-    .filter((folder) => Number(folder.id) !== Number(rootFolderId))
-    .map((folder) => sanitizeFolderSegment(folder.name))
-    .filter(Boolean);
 }
 
 export async function checkBucketHealth(location = "sixmyk") {
@@ -82,15 +74,9 @@ export async function uploadFile(formData) {
     }
 
     const resolvedSpace = parent.data.space || space;
-    const resolvedSpaceConfig = getSpaceConfig(resolvedSpace);
-    const pathResult = await getFolderPath(folderId);
-    const folderPath = folderPathSegments(
-      pathResult.data || [],
-      resolvedSpaceConfig.rootFolderId
-    );
 
     const key = buildObjectKey({
-      folderPath,
+      space: resolvedSpace,
       fileName: file.name,
     });
 
@@ -98,13 +84,16 @@ export async function uploadFile(formData) {
     const mimeType = file.type || "application/octet-stream";
 
     let capturedAt = null;
+    let widthPx = null;
+    let heightPx = null;
+
     try {
-      capturedAt = await extractCapturedAt(buffer, {
-        mimeType,
-        name: file.name,
-      });
+      [capturedAt, { widthPx, heightPx }] = await Promise.all([
+        extractCapturedAt(buffer, { mimeType, name: file.name }),
+        extractImageDimensions(buffer, { mimeType, name: file.name }),
+      ]);
     } catch (metaError) {
-      console.warn("uploadFile/exif:", metaError?.message || metaError);
+      console.warn("uploadFile/meta:", metaError?.message || metaError);
     }
 
     await uploadObject({
@@ -146,6 +135,8 @@ export async function uploadFile(formData) {
       thumbnailKey,
       storageLocation: location,
       capturedAt,
+      widthPx,
+      heightPx,
     });
 
     if (!record.success) {

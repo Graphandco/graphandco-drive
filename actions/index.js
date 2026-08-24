@@ -10,9 +10,11 @@ export {
   deleteFolderPermanent,
   getSidebarFolderTrees,
 } from "@/actions/folders";
+export { FILES_PAGE_SIZE } from "@/lib/drive";
 export {
   getFile,
   listFiles,
+  listFilesPaginated,
   createFileRecord,
   renameFile,
   updateFileMetadata,
@@ -21,6 +23,7 @@ export {
   deleteFilePermanent,
   getStorageStats,
   getFolderStats,
+  getSpaceStats,
 } from "@/actions/files";
 export { getDriveContents, emptyTrash } from "@/actions/drive";
 export {
@@ -29,6 +32,7 @@ export {
   bulkRestoreItems,
   bulkDeletePermanentItems,
 } from "@/actions/bulk";
+export { moveItems } from "@/actions/move";
 export {
   checkBucketHealth,
   checkBucketsHealth,

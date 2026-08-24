@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
    Download,
    Eraser,
@@ -14,6 +14,7 @@ import {
    RotateCcw,
    Trash2,
 } from "lucide-react";
+import { motion } from "motion/react";
 import { toast } from "sonner";
 
 import {
@@ -33,11 +34,21 @@ import {
    BulkActionBar,
    SelectionCheckbox,
 } from "@/components/drive/bulk-action-bar";
+import { BusyOverlay } from "@/components/drive/busy-overlay";
 import { ConfirmDialog } from "@/components/drive/confirm-dialog";
+import { useBusyAction } from "@/hooks/use-busy-action";
+import {
+   useDriveDndOptional,
+   useFolderDropTarget,
+} from "@/components/drive/drive-dnd-provider";
+import { FolderDropBadge } from "@/components/drive/folder-drop-badge";
 import { FileThumbnail } from "@/components/drive/file-thumbnail";
 import { ImageLightbox } from "@/components/drive/image-lightbox";
 import { ItemInfoDrawer } from "@/components/drive/item-info-drawer";
+import { InfiniteScrollSentinel } from "@/components/drive/infinite-scroll-sentinel";
+import { MasonryGrid } from "@/components/drive/masonry-grid";
 import { RenameDialog } from "@/components/drive/rename-dialog";
+import { useInfiniteFiles } from "@/hooks/use-infinite-files";
 import { Button } from "@/components/ui/button";
 import {
    DropdownMenu,
@@ -46,8 +57,9 @@ import {
    DropdownMenuSeparator,
    DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { folderHref } from "@/lib/drive";
+import { folderHref, sortFilesByCaptureDate } from "@/lib/drive";
 import { formatBytes, formatDate } from "@/lib/format";
+import { listItemDelay, listItemIn, listItemTransition } from "@/lib/motion";
 import { itemSelectionKey } from "@/lib/tags";
 import { cn } from "@/lib/utils";
 
@@ -218,16 +230,251 @@ function ItemMenu({
    );
 }
 
+function DriveGridItem({
+   item,
+   index,
+   compact,
+   position,
+   selected,
+   hasSelection,
+   canDrag,
+   pending,
+   menuProps,
+   onItemDragStart,
+   handleItemActivate,
+   toggleItemSelection,
+   openInfo,
+   openLightbox,
+}) {
+   return (
+      <motion.li
+         layout={false}
+         initial={{
+            opacity: 0,
+            y: 5,
+            top: position.top,
+            left: position.left,
+            width: position.width,
+            height: position.height,
+         }}
+         animate={{
+            opacity: 1,
+            y: 0,
+            top: position.top,
+            left: position.left,
+            width: position.width,
+            height: position.height,
+         }}
+         transition={{
+            opacity: { ...listItemTransition, delay: listItemDelay(index) },
+            y: { ...listItemTransition, delay: listItemDelay(index) },
+            top: { duration: 0.3, ease: [0.22, 1, 0.36, 1] },
+            left: { duration: 0.3, ease: [0.22, 1, 0.36, 1] },
+            width: { duration: 0.3, ease: [0.22, 1, 0.36, 1] },
+            height: { duration: 0.3, ease: [0.22, 1, 0.36, 1] },
+         }}
+         className="absolute"
+      >
+         <div
+            draggable={canDrag}
+            onDragStart={(event) => onItemDragStart(event, item)}
+            className={cn(
+               "group relative h-full w-full overflow-hidden border border-white/10 bg-black/20 transition hover:border-white/25",
+               compact ? "rounded-md" : "rounded-lg",
+               selected && "border-primary ring-2 ring-primary/60",
+               (hasSelection || canDrag) &&
+                  "cursor-grab active:cursor-grabbing",
+            )}
+            onClickCapture={(event) => {
+               handleItemActivate(event, item, index);
+            }}
+         >
+            <div
+               className={cn(
+                  "absolute top-1.5 right-1.5 z-20 transition-opacity",
+                  selected || hasSelection
+                     ? "opacity-100"
+                     : "opacity-0 group-hover:opacity-100",
+               )}
+            >
+               <SelectionCheckbox
+                  selected={selected}
+                  onChange={(_, event) =>
+                     toggleItemSelection(item, index, event)
+                  }
+               />
+            </div>
+
+            <div className="h-full w-full">
+               <FileThumbnail
+                  file={item}
+                  onOpen={hasSelection ? undefined : openLightbox}
+                  fit="cell"
+               />
+            </div>
+
+            <div
+               className={
+                  compact
+                     ? "pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/85 via-black/55 to-transparent px-1 pt-4 pb-1 opacity-0 transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto"
+                     : "pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/80 via-black/50 to-transparent px-2.5 pt-8 pb-2.5 opacity-0 transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto"
+               }
+            >
+               <div className="flex items-end gap-1">
+                  <div className="min-w-0 flex-1 pointer-events-none">
+                     <p
+                        className={
+                           compact
+                              ? "truncate text-[10px] font-medium leading-tight text-white"
+                              : "truncate text-sm font-medium text-white"
+                        }
+                     >
+                        {item.name}
+                     </p>
+                     {!compact ? (
+                        <p className="truncate text-xs text-white/70">
+                           {formatBytes(item.size_bytes)}
+                        </p>
+                     ) : null}
+                  </div>
+                  <div
+                     data-item-actions
+                     className="flex shrink-0 scale-90 origin-bottom-right pointer-events-auto items-center gap-0.5"
+                  >
+                     <ItemInfoButton
+                        onClick={() => openInfo(item)}
+                        pending={pending}
+                        compact={compact}
+                     />
+                     <ItemMenu item={item} {...menuProps} />
+                  </div>
+               </div>
+            </div>
+         </div>
+      </motion.li>
+   );
+}
+
+function DriveListRow({
+   item,
+   index,
+   selected,
+   hasSelection,
+   canDrag,
+   pending,
+   menuProps,
+   space,
+   onItemDragStart,
+   handleItemActivate,
+   toggleItemSelection,
+   openInfo,
+   openLightbox,
+}) {
+   const isFolder = item.kind === "folder";
+   const {
+      active: dropActive,
+      fileAction,
+      showFileBadge,
+      folderDropProps,
+   } = useFolderDropTarget({
+      folderId: item.id,
+      space: item.space || space,
+      disabled: !isFolder || !canDrag,
+   });
+   const dnd = useDriveDndOptional();
+   const dropIsMove = fileAction === "move";
+
+   return (
+      <motion.li
+         draggable={canDrag}
+         onDragStart={(event) => onItemDragStart(event, item)}
+         className={cn(
+            "relative grid grid-cols-[28px_minmax(0,1fr)_88px] items-center gap-2 px-3 py-2.5 sm:grid-cols-[28px_minmax(0,1fr)_100px_88px] md:grid-cols-[28px_minmax(0,1fr)_100px_150px_88px]",
+            selected && "bg-primary/10",
+            dropActive &&
+               (dropIsMove
+                  ? "bg-red-500/15 ring-1 ring-inset ring-red-500/50"
+                  : "bg-emerald-500/15 ring-1 ring-inset ring-emerald-500/50"),
+            canDrag && "cursor-grab active:cursor-grabbing",
+         )}
+         initial={listItemIn.initial}
+         animate={listItemIn.animate}
+         transition={{
+            ...listItemTransition,
+            delay: listItemDelay(index),
+         }}
+         onClickCapture={(event) => {
+            handleItemActivate(event, item, index);
+         }}
+         {...(isFolder ? folderDropProps : {})}
+      >
+         {showFileBadge ? <FolderDropBadge mode={fileAction} /> : null}
+         <SelectionCheckbox
+            selected={selected}
+            onChange={(_, event) => toggleItemSelection(item, index, event)}
+            className="size-4"
+         />
+         {isFolder && item.href ? (
+            <Link
+               href={item.href}
+               className={cn(
+                  "flex min-w-0 items-center gap-2 font-medium hover:text-primary",
+                  dnd?.isDragging && "pointer-events-none",
+               )}
+               onClick={(event) => {
+                  handleItemActivate(event, item, index);
+               }}
+               draggable={false}
+            >
+               <Folder className="size-4 shrink-0 text-primary" />
+               <span className="truncate">{item.name}</span>
+            </Link>
+         ) : (
+            <div className="flex min-w-0 items-center gap-2">
+               <div className="size-8 shrink-0 overflow-hidden rounded-md border border-white/10">
+                  <FileThumbnail
+                     file={item}
+                     onOpen={hasSelection ? undefined : openLightbox}
+                     fit="cover"
+                  />
+               </div>
+               <span className="truncate">{item.name}</span>
+            </div>
+         )}
+
+         <span className="hidden text-sm text-muted-foreground sm:block">
+            {item.kind === "file" ? formatBytes(item.size_bytes) : "—"}
+         </span>
+         <span className="hidden text-sm text-muted-foreground md:block">
+            {formatDate(item.updated_at || item.deleted_at)}
+         </span>
+
+         <div data-item-actions className="flex items-center justify-end gap-1">
+            <ItemInfoButton
+               onClick={() => openInfo(item)}
+               pending={pending}
+               overlay={false}
+            />
+            <ItemMenu item={item} {...menuProps} />
+         </div>
+      </motion.li>
+   );
+}
+
 export function DriveList({
    folders = [],
    files = [],
    view,
    space,
+   folderId = null,
    openFileId,
    layout = "list",
+   galleryMode = false,
+   filesPagination = null,
 }) {
    const router = useRouter();
-   const [pending, startTransition] = useTransition();
+   const dnd = useDriveDndOptional();
+   const { isBusy: pending, startTransition, runBusy } = useBusyAction();
    const [lightbox, setLightbox] = useState(null);
    const [confirm, setConfirm] = useState(null);
    const [infoItem, setInfoItem] = useState(null);
@@ -235,9 +482,24 @@ export function DriveList({
    const [selectedKeys, setSelectedKeys] = useState(() => new Set());
    const [selectionAnchor, setSelectionAnchor] = useState(null);
 
+   const {
+      files: galleryFiles,
+      hasMore: galleryHasMore,
+      loading: galleryLoading,
+      loadMore: loadMoreGallery,
+   } = useInfiniteFiles({
+      space,
+      folderId: null,
+      initialFiles: files,
+      initialPagination: filesPagination,
+      enabled: galleryMode && view === "browse",
+   });
+
+   const displayFiles = galleryMode && view === "browse" ? galleryFiles : files;
+
    useEffect(() => {
       if (!openFileId) return;
-      const file = files.find(
+      const file = displayFiles.find(
          (entry) => String(entry.id) === String(openFileId),
       );
       if (!file) return;
@@ -255,26 +517,33 @@ export function DriveList({
       return () => {
          cancelled = true;
       };
-   }, [openFileId, files]);
+   }, [openFileId, displayFiles]);
 
-   const items = useMemo(
-      () => [
-         ...folders.map((folder) => ({
-            ...folder,
-            kind: "folder",
-            href:
-               view === "browse"
-                  ? folderHref(folder.space || space, folder.id)
-                  : null,
-         })),
-         ...files.map((file) => ({
+   const isGridLayout = layout === "grid" || layout === "compact";
+
+   const items = useMemo(() => {
+      const folderItems = folders.map((folder) => ({
+         ...folder,
+         kind: "folder",
+         href:
+            view === "browse"
+               ? folderHref(folder.space || space, folder.id)
+               : null,
+      }));
+      const fileItems = sortFilesByCaptureDate(
+         displayFiles.map((file) => ({
             ...file,
             kind: "file",
             href: null,
          })),
-      ],
-      [folders, files, view, space],
-   );
+      );
+
+      if (isGridLayout) {
+         return fileItems;
+      }
+
+      return [...folderItems, ...fileItems];
+   }, [folders, displayFiles, view, space, isGridLayout]);
 
    const itemsSignature = useMemo(
       () => items.map((item) => itemSelectionKey(item)).join("|"),
@@ -368,6 +637,32 @@ export function DriveList({
       selectedKeys.has(itemSelectionKey(item)),
    );
    const hasSelection = selectedKeys.size > 0;
+   const canDrag = view === "browse";
+
+   function getDragItems(item) {
+      const key = itemSelectionKey(item);
+      if (selectedKeys.has(key) && selectedItems.length > 0) {
+         return selectedItems;
+      }
+      return [item];
+   }
+
+   function onItemDragStart(event, item) {
+      if (!canDrag || !dnd) {
+         event.preventDefault();
+         return;
+      }
+      if (event.target.closest("[data-item-actions], [role='checkbox']")) {
+         event.preventDefault();
+         return;
+      }
+      event.stopPropagation();
+      dnd.beginDrag(event, {
+         space: space || item.space,
+         items: getDragItems(item),
+         sourceFolderId: galleryMode ? null : folderId,
+      });
+   }
 
    /** Clic normal : lightbox/navigation sauf si une sélection est active → toggle. */
    function handleItemActivate(event, item, index) {
@@ -385,9 +680,11 @@ export function DriveList({
    }
 
    function run(action) {
-      startTransition(async () => {
+      runBusy(async () => {
          await action();
-         router.refresh();
+         startTransition(() => {
+            router.refresh();
+         });
       });
    }
 
@@ -410,7 +707,7 @@ export function DriveList({
       }
 
       toast.success(
-         renameItem.kind === "folder" ? "Dossier renommé" : "Fichier renommé"
+         renameItem.kind === "folder" ? "Dossier renommé" : "Fichier renommé",
       );
       setRenameItem(null);
       router.refresh();
@@ -461,7 +758,7 @@ export function DriveList({
       const current = confirm;
       if (!current?.item) return;
 
-      startTransition(async () => {
+      runBusy(async () => {
          if (current.type === "trash" && current.item.kind === "folder") {
             await trashFolder(current.item.id);
          } else if (current.type === "delete-forever") {
@@ -472,7 +769,9 @@ export function DriveList({
             }
          }
          setConfirm(null);
-         router.refresh();
+         startTransition(() => {
+            router.refresh();
+         });
       });
    }
 
@@ -500,8 +799,17 @@ export function DriveList({
       run,
    };
 
+   const busyLabel =
+      confirm?.type === "delete-forever"
+         ? "Suppression définitive…"
+         : confirm?.type === "trash"
+           ? "Mise à la corbeille…"
+           : "Traitement en cours…";
+
    return (
       <div className="flex flex-1 flex-col gap-3">
+         <BusyOverlay show={pending} label={busyLabel} />
+
          <ImageLightbox
             open={Boolean(lightbox)}
             src={lightbox?.src}
@@ -519,6 +827,7 @@ export function DriveList({
             confirmLabel={confirm?.confirmLabel || "Confirmer"}
             destructive
             pending={pending}
+            pendingLabel={busyLabel}
             onConfirm={onConfirmAction}
          />
 
@@ -551,144 +860,45 @@ export function DriveList({
 
          {!items.length ? (
             <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-white/10 px-6 py-16 text-sm text-muted-foreground">
-               Aucun élément
+               {isGridLayout && folders.length > 0
+                  ? "Aucun fichier"
+                  : "Aucun élément"}
             </div>
-         ) : layout === "grid" || layout === "compact" ? (
-            <ul
-               className={
-                  layout === "compact"
-                     ? "flex flex-wrap content-start justify-around gap-1.5"
-                     : "flex flex-wrap content-start justify-around gap-3"
-               }
-            >
-               {items.map((item, index) => {
-                  const compact = layout === "compact";
-                  const tileHeight = compact ? 75 : 200;
-                  const isFolder = item.kind === "folder";
-                  const selected = selectedKeys.has(itemSelectionKey(item));
-
-                  const media = isFolder ? (
-                     <div className="flex size-full items-center justify-center bg-primary/10">
-                        <Folder
-                           className={
-                              compact
-                                 ? "size-5 text-primary"
-                                 : "size-12 text-primary"
-                           }
-                        />
-                     </div>
-                  ) : (
-                     <FileThumbnail
-                        file={item}
-                        onOpen={hasSelection ? undefined : openLightbox}
-                        fit="contain"
+         ) : isGridLayout ? (
+            <>
+               <MasonryGrid
+                  items={items}
+                  compact={layout === "compact"}
+                  showDayLabels={view === "browse"}
+               >
+                  {({ item, index, position, key }) => (
+                     <DriveGridItem
+                        key={key}
+                        item={item}
+                        index={index}
+                        compact={layout === "compact"}
+                        position={position}
+                        selected={selectedKeys.has(itemSelectionKey(item))}
+                        hasSelection={hasSelection}
+                        canDrag={canDrag}
+                        pending={pending}
+                        menuProps={menuProps}
+                        onItemDragStart={onItemDragStart}
+                        handleItemActivate={handleItemActivate}
+                        toggleItemSelection={toggleItemSelection}
+                        openInfo={openInfo}
+                        openLightbox={openLightbox}
                      />
-                  );
-
-                  const card = (
-                     <div
-                        className={cn(
-                           "group relative overflow-hidden border border-white/10 bg-black/20 transition hover:border-white/25",
-                           compact ? "rounded-md" : "rounded-xl",
-                           isFolder &&
-                              (compact ? "size-[75px]" : "size-[200px]"),
-                           selected && "border-primary ring-2 ring-primary/60",
-                           hasSelection && "cursor-pointer",
-                        )}
-                        style={
-                           isFolder
-                              ? undefined
-                              : {
-                                   height: tileHeight,
-                                   width: "auto",
-                                   maxWidth: "100%",
-                                }
-                        }
-                        onClickCapture={(event) => {
-                           handleItemActivate(event, item, index);
-                        }}
-                     >
-                        <div
-                           className={cn(
-                              "absolute top-1.5 left-1.5 z-20 transition-opacity",
-                              selected || hasSelection
-                                 ? "opacity-100"
-                                 : "opacity-0 group-hover:opacity-100",
-                           )}
-                        >
-                           <SelectionCheckbox
-                              selected={selected}
-                              onChange={(_, event) =>
-                                 toggleItemSelection(item, index, event)
-                              }
-                           />
-                        </div>
-
-                        {isFolder && item.href ? (
-                           <Link
-                              href={item.href}
-                              className="absolute inset-0 block"
-                              onClick={(event) => {
-                                 handleItemActivate(event, item, index);
-                              }}
-                           >
-                              {media}
-                           </Link>
-                        ) : (
-                           <div
-                              className={
-                                 isFolder ? "absolute inset-0" : "h-full w-auto"
-                              }
-                           >
-                              {media}
-                           </div>
-                        )}
-
-                        <div
-                           className={
-                              compact
-                                 ? "pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/85 via-black/55 to-transparent px-1 pt-4 pb-1 opacity-0 transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto"
-                                 : "pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/80 via-black/50 to-transparent px-2.5 pt-8 pb-2.5 opacity-0 transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto"
-                           }
-                        >
-                           <div className="flex items-end gap-1">
-                              <div className="min-w-0 flex-1 pointer-events-none">
-                                 <p
-                                    className={
-                                       compact
-                                          ? "truncate text-[10px] font-medium leading-tight text-white"
-                                          : "truncate text-sm font-medium text-white"
-                                    }
-                                 >
-                                    {item.name}
-                                 </p>
-                                 {!compact ? (
-                                    <p className="truncate text-xs text-white/70">
-                                       {item.kind === "file"
-                                          ? formatBytes(item.size_bytes)
-                                          : "Dossier"}
-                                    </p>
-                                 ) : null}
-                              </div>
-                              <div
-                                 data-item-actions
-                                 className="flex shrink-0 scale-90 origin-bottom-right pointer-events-auto items-center gap-0.5"
-                              >
-                                 <ItemInfoButton
-                                    onClick={() => openInfo(item)}
-                                    pending={pending}
-                                    compact={compact}
-                                 />
-                                 <ItemMenu item={item} {...menuProps} />
-                              </div>
-                           </div>
-                        </div>
-                     </div>
-                  );
-
-                  return <li key={`${item.kind}-${item.id}`}>{card}</li>;
-               })}
-            </ul>
+                  )}
+               </MasonryGrid>
+               {galleryMode ? (
+                  <InfiniteScrollSentinel
+                     hasMore={galleryHasMore}
+                     loading={galleryLoading}
+                     onVisible={loadMoreGallery}
+                  />
+               ) : null}
+            </>
          ) : (
             <div className="overflow-hidden rounded-xl border border-white/10 bg-black/20">
                <div className="grid grid-cols-[28px_minmax(0,1fr)_88px] gap-2 border-b border-white/10 px-3 py-2 text-xs text-muted-foreground sm:grid-cols-[28px_minmax(0,1fr)_100px_88px] md:grid-cols-[28px_minmax(0,1fr)_100px_150px_88px]">
@@ -713,72 +923,22 @@ export function DriveList({
                   {items.map((item, index) => {
                      const selected = selectedKeys.has(itemSelectionKey(item));
                      return (
-                        <li
+                        <DriveListRow
                            key={`${item.kind}-${item.id}`}
-                           className={cn(
-                              "grid grid-cols-[28px_minmax(0,1fr)_88px] items-center gap-2 px-3 py-2.5 sm:grid-cols-[28px_minmax(0,1fr)_100px_88px] md:grid-cols-[28px_minmax(0,1fr)_100px_150px_88px]",
-                              selected && "bg-primary/10",
-                           )}
-                           onClickCapture={(event) => {
-                              handleItemActivate(event, item, index);
-                           }}
-                        >
-                           <SelectionCheckbox
-                              selected={selected}
-                              onChange={(_, event) =>
-                                 toggleItemSelection(item, index, event)
-                              }
-                              className="size-4"
-                           />
-                           {item.kind === "folder" && item.href ? (
-                              <Link
-                                 href={item.href}
-                                 className="flex min-w-0 items-center gap-2 font-medium hover:text-primary"
-                                 onClick={(event) => {
-                                    handleItemActivate(event, item, index);
-                                 }}
-                              >
-                                 <Folder className="size-4 shrink-0 text-primary" />
-                                 <span className="truncate">{item.name}</span>
-                              </Link>
-                           ) : (
-                              <div className="flex min-w-0 items-center gap-2">
-                                 <div className="size-8 shrink-0 overflow-hidden rounded-md border border-white/10">
-                                    <FileThumbnail
-                                       file={item}
-                                       onOpen={
-                                          hasSelection
-                                             ? undefined
-                                             : openLightbox
-                                       }
-                                       fit="cover"
-                                    />
-                                 </div>
-                                 <span className="truncate">{item.name}</span>
-                              </div>
-                           )}
-
-                           <span className="hidden text-sm text-muted-foreground sm:block">
-                              {item.kind === "file"
-                                 ? formatBytes(item.size_bytes)
-                                 : "—"}
-                           </span>
-                           <span className="hidden text-sm text-muted-foreground md:block">
-                              {formatDate(item.updated_at || item.deleted_at)}
-                           </span>
-
-                           <div
-                              data-item-actions
-                              className="flex items-center justify-end gap-1"
-                           >
-                              <ItemInfoButton
-                                 onClick={() => openInfo(item)}
-                                 pending={pending}
-                                 overlay={false}
-                              />
-                              <ItemMenu item={item} {...menuProps} />
-                           </div>
-                        </li>
+                           item={item}
+                           index={index}
+                           selected={selected}
+                           hasSelection={hasSelection}
+                           canDrag={canDrag}
+                           pending={pending}
+                           menuProps={menuProps}
+                           space={space}
+                           onItemDragStart={onItemDragStart}
+                           handleItemActivate={handleItemActivate}
+                           toggleItemSelection={toggleItemSelection}
+                           openInfo={openInfo}
+                           openLightbox={openLightbox}
+                        />
                      );
                   })}
                </ul>

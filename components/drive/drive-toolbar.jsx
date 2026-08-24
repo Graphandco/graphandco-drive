@@ -1,12 +1,14 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FolderPlus, FolderUp, Loader2, Trash2, Upload } from "lucide-react";
 
 import { createFolder, emptyTrash, trashFolder } from "@/actions";
+import { BusyOverlay } from "@/components/drive/busy-overlay";
 import { ConfirmDialog } from "@/components/drive/confirm-dialog";
 import { DriveViewToggle } from "@/components/drive/drive-view-toggle";
+import { useBusyAction } from "@/hooks/use-busy-action";
 import { getSpaceConfig } from "@/lib/drive";
 import {
   collectFileListEntries,
@@ -28,7 +30,7 @@ export function DriveToolbar({
   const router = useRouter();
   const fileInputRef = useRef(null);
   const folderInputRef = useRef(null);
-  const [pending, startTransition] = useTransition();
+  const { isBusy: pending, startTransition, runBusy } = useBusyAction();
   const [mode, setMode] = useState(null);
   const [name, setName] = useState("");
   const [error, setError] = useState("");
@@ -37,7 +39,7 @@ export function DriveToolbar({
   const spaceConfig = getSpaceConfig(space);
 
   function runConfirm(action) {
-    startTransition(async () => {
+    runBusy(async () => {
       setError("");
       await action();
       setConfirm(null);
@@ -47,7 +49,11 @@ export function DriveToolbar({
   if (view === "trash") {
     return (
       <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-2">
+        <BusyOverlay
+          show={pending}
+          label="Vidage de la corbeille…"
+        />
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <Button
             type="button"
             size="sm"
@@ -84,6 +90,7 @@ export function DriveToolbar({
           confirmLabel={confirm?.confirmLabel || "Confirmer"}
           destructive
           pending={pending}
+          pendingLabel="Vidage de la corbeille…"
           onConfirm={() => {
             if (confirm?.type !== "empty-trash") return;
             runConfirm(async () => {
@@ -92,7 +99,9 @@ export function DriveToolbar({
                 setError(result.error || "Impossible de vider la corbeille.");
                 return;
               }
-              router.refresh();
+              startTransition(() => {
+                router.refresh();
+              });
             });
           }}
         />
@@ -123,7 +132,7 @@ export function DriveToolbar({
       return;
     }
 
-    startTransition(async () => {
+    runBusy(async () => {
       const result = await createFolder({
         name: value,
         parentId: folderId,
@@ -136,7 +145,9 @@ export function DriveToolbar({
       }
 
       closeForm();
-      router.refresh();
+      startTransition(() => {
+        router.refresh();
+      });
     });
   }
 
@@ -159,7 +170,7 @@ export function DriveToolbar({
       location: spaceConfig.storageLocation,
     };
 
-    startTransition(async () => {
+    runBusy(async () => {
       setError("");
       setStatus(`Upload 0/${entries.length}…`);
 
@@ -173,7 +184,9 @@ export function DriveToolbar({
       if (result.errors.length) {
         setError(result.errors.join(" · "));
       }
-      router.refresh();
+      startTransition(() => {
+        router.refresh();
+      });
     });
   }
 
@@ -181,61 +194,63 @@ export function DriveToolbar({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          size="sm"
-          variant={mode === "folder" ? "secondary" : "outline"}
-          disabled={pending}
-          onClick={() => {
-            setMode((current) => (current === "folder" ? null : "folder"));
-            setError("");
-          }}
-        >
-          <FolderPlus />
-          Nouveau dossier
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={pending}
-          onClick={onPickFiles}
-        >
-          {pending ? <Loader2 className="animate-spin" /> : <Upload />}
-          Importer
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={pending}
-          onClick={onPickFolder}
-        >
-          {pending ? <Loader2 className="animate-spin" /> : <FolderUp />}
-          Importer un dossier
-        </Button>
-        {!isRootFolder ? (
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
-            size="icon-sm"
+            size="sm"
+            variant={mode === "folder" ? "secondary" : "outline"}
+            disabled={pending}
+            onClick={() => {
+              setMode((current) => (current === "folder" ? null : "folder"));
+              setError("");
+            }}
+          >
+            <FolderPlus />
+            Nouveau dossier
+          </Button>
+          <Button
+            type="button"
+            size="sm"
             variant="outline"
             disabled={pending}
-            aria-label="Supprimer le dossier"
-            title="Supprimer le dossier"
-            onClick={() =>
-              setConfirm({
-                type: "delete-folder",
-                title: "Supprimer ce dossier ?",
-                description: `« ${folderLabel} » et tout son contenu seront envoyés à la corbeille.`,
-                confirmLabel: "Supprimer",
-              })
-            }
-            className="border-red-500/40 text-red-300 hover:bg-red-500/10 hover:text-red-200"
+            onClick={onPickFiles}
           >
-            <Trash2 className="size-4" />
+            {pending ? <Loader2 className="animate-spin" /> : <Upload />}
+            Importer
           </Button>
-        ) : null}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={pending}
+            onClick={onPickFolder}
+          >
+            {pending ? <Loader2 className="animate-spin" /> : <FolderUp />}
+            Importer un dossier
+          </Button>
+          {!isRootFolder ? (
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="outline"
+              disabled={pending}
+              aria-label="Supprimer le dossier"
+              title="Supprimer le dossier"
+              onClick={() =>
+                setConfirm({
+                  type: "delete-folder",
+                  title: "Supprimer ce dossier ?",
+                  description: `« ${folderLabel} » et tout son contenu seront envoyés à la corbeille.`,
+                  confirmLabel: "Supprimer",
+                })
+              }
+              className="border-red-500/40 text-red-300 hover:bg-red-500/10 hover:text-red-200"
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          ) : null}
+        </div>
         {typeof onLayoutChange === "function" ? (
           <DriveViewToggle layout={layout} onChange={onLayoutChange} />
         ) : null}

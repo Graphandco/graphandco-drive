@@ -38,6 +38,8 @@ CREATE TABLE files (
   thumbnail_key VARCHAR(512) NULL,
   tags VARCHAR(512) NULL,
   captured_at DATETIME NULL,
+  width_px INT UNSIGNED NULL,
+  height_px INT UNSIGNED NULL,
   is_shared TINYINT(1) NOT NULL DEFAULT 0,
   deleted_at TIMESTAMP NULL DEFAULT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -50,6 +52,20 @@ CREATE TABLE files (
   CONSTRAINT fk_files_folder
     FOREIGN KEY (folder_id) REFERENCES folders (id)
     ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE file_folders (
+  file_id BIGINT UNSIGNED NOT NULL,
+  folder_id BIGINT UNSIGNED NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (file_id, folder_id),
+  KEY idx_file_folders_folder (folder_id),
+  CONSTRAINT fk_file_folders_file
+    FOREIGN KEY (file_id) REFERENCES files (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_file_folders_folder
+    FOREIGN KEY (folder_id) REFERENCES folders (id)
+    ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Racines stables : 1 = Six-MyK, 2 = Public, 3 = Régis (NAS)

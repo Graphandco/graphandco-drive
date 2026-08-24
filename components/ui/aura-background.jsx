@@ -35,7 +35,7 @@ function ActuelLayers() {
         className="pointer-events-none absolute inset-0 transform-gpu"
         style={{
           background:
-            "linear-gradient(154deg, transparent 28%, rgba(31,103,99,0.08) 38%, rgba(48,137,130,0.22) 48%, rgba(25,78,75,0.12) 56%, transparent 68%)",
+            "linear-gradient(154deg, transparent 28%, rgba(31,103,99,0.12) 38%, rgba(48,137,130,0.35) 48%, rgba(25,78,75,0.18) 56%, transparent 68%)",
           mixBlendMode: "screen",
           filter: "blur(108px)",
           transform: "translateZ(0)",
@@ -46,7 +46,7 @@ function ActuelLayers() {
         className="pointer-events-none absolute inset-0 opacity-85 transform-gpu"
         style={{
           background:
-            "radial-gradient(ellipse 70% 18% at 50% 52%, rgba(38,116,111,0.20) 0%, rgba(20,61,59,0.08) 48%, transparent 82%)",
+            "radial-gradient(ellipse 70% 18% at 50% 52%, rgba(38,116,111,0.35) 0%, rgba(20,61,59,0.12) 48%, transparent 82%)",
           mixBlendMode: "screen",
           filter: "blur(90px)",
           transform: "translateZ(0)",
@@ -126,7 +126,7 @@ function SmokeveilLayers() {
         className="aura-smokeveil-1 pointer-events-none absolute inset-0 transform-gpu"
         style={{
           background:
-            "linear-gradient(155deg, transparent 8%, rgba(30,75,68,0.12) 28%, rgba(45, 53, 113, 0.25) 43%, rgba(23,65,59,0.18) 59%, transparent 82%)",
+            "linear-gradient(155deg, transparent 8%, rgba(30,75,68,0.18) 28%, rgba(45, 53, 113, 0.45) 43%, rgba(23,65,59,0.22) 59%, transparent 82%)",
           mixBlendMode: "screen",
           transform: "translateZ(0)",
         }}
@@ -136,7 +136,7 @@ function SmokeveilLayers() {
         className="aura-smokeveil-2 pointer-events-none absolute inset-0 transform-gpu"
         style={{
           background:
-            "radial-gradient(70% 42% at 45% 50%, rgba(53, 41, 112, 0.25) 0%, rgba(20,61,55,0.12) 48%, transparent 82%)",
+            "radial-gradient(70% 42% at 45% 50%, rgba(53, 41, 112, 0.45) 0%, rgba(20,61,55,0.18) 48%, transparent 82%)",
           mixBlendMode: "screen",
           opacity: 0.9,
           transform: "translateZ(0)",
@@ -147,7 +147,7 @@ function SmokeveilLayers() {
         className="aura-smokeveil-3 pointer-events-none absolute inset-0 transform-gpu"
         style={{
           background:
-            "linear-gradient(25deg, transparent 25%, rgba(90, 94, 150, 0.07) 50%, transparent 75%)",
+            "linear-gradient(25deg, transparent 25%, rgba(90, 94, 150, 0.25) 50%, transparent 75%)",
           mixBlendMode: "soft-light",
           opacity: 0.8,
           transform: "translateZ(0)",
@@ -246,9 +246,14 @@ export function AuraBackground({ children }) {
   const Layers = THEME_LAYERS[theme] || ActuelLayers;
 
   return (
-    <div className="relative min-h-screen overflow-hidden">
-      {/* Pas de background-color ici : les blend modes composent sur le body */}
-      <Layers />
+    <div className="relative min-h-screen">
+      <div
+        className="pointer-events-none fixed inset-0 z-0 isolate overflow-hidden"
+        aria-hidden
+      >
+        <div className="absolute inset-0 bg-background" aria-hidden />
+        <Layers />
+      </div>
       <div className="relative z-10">{children}</div>
     </div>
   );
