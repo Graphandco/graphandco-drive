@@ -1,13 +1,14 @@
 import { cookies } from "next/headers";
 import { Suspense } from "react";
 
-import { getSidebarFolderTrees } from "@/actions";
+import { getSidebarFolderTrees, listSmartFolders } from "@/actions";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { readBucketCookie } from "@/lib/bucket";
 
 export default async function DashboardLayout({ children }) {
-  const [trees, cookieStore] = await Promise.all([
+  const [trees, smartFolders, cookieStore] = await Promise.all([
     getSidebarFolderTrees(),
+    listSmartFolders(),
     cookies(),
   ]);
 
@@ -15,6 +16,7 @@ export default async function DashboardLayout({ children }) {
     <Suspense fallback={null}>
       <DashboardShell
         folderTrees={trees.data}
+        smartFolders={smartFolders.data || []}
         lastBucketSpace={readBucketCookie(cookieStore)}
       >
         {children}

@@ -24,8 +24,16 @@ export {
   getStorageStats,
   getFolderStats,
   getSpaceStats,
+  getTagStats,
 } from "@/actions/files";
 export { getDriveContents, emptyTrash } from "@/actions/drive";
+export {
+  listSmartFolders,
+  getSmartFolder,
+  listActiveTags,
+  createSmartFolder,
+  deleteSmartFolder,
+} from "@/actions/smart-folders";
 export {
   bulkAddFileTags,
   bulkTrashItems,

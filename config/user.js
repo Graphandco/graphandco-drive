@@ -36,13 +36,4 @@ export const mockNavMain = [
     icon: "Trash2",
     items: [],
   },
-  {
-    title: "Paramètres",
-    url: "/settings",
-    icon: "Settings2",
-    items: [
-      { title: "Général", url: "/settings" },
-      { title: "Stockage", url: "/settings/storage" },
-    ],
-  },
 ];

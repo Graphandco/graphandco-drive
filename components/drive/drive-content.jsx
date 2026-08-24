@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Search, X } from "lucide-react";
 
 import { DrivePanel } from "@/components/drive/drive-panel";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -15,7 +16,11 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Input } from "@/components/ui/input";
 import { filterDriveItems } from "@/lib/drive-search";
-import { folderHref, getSpaceConfig } from "@/lib/drive";
+import {
+  folderHref,
+  getSpaceConfig,
+  smartFolderHref,
+} from "@/lib/drive";
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -30,15 +35,23 @@ export function DriveContent({
   openFileId,
   error = null,
   galleryMode = false,
+  smartFolderMode = false,
+  smartFolder = null,
   filesPagination = null,
 }) {
   const spaceConfig = getSpaceConfig(space);
   const folderId = folder?.id || spaceConfig.rootFolderId;
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query, 300);
+  const [searchMeta, setSearchMeta] = useState({
+    total: null,
+    searching: false,
+  });
 
   useEffect(() => {
     setQuery("");
-  }, [folderId, view, space]);
+    setSearchMeta({ total: null, searching: false });
+  }, [folderId, view, space, smartFolder?.id]);
 
   const filtered = useMemo(
     () => filterDriveItems(folders, files, query),
@@ -47,8 +60,17 @@ export function DriveContent({
 
   const showBreadcrumbs = view === "browse" && path.length > 0;
   const hasQuery = query.trim().length > 0;
+  const usesServerSearch =
+    hasQuery && (galleryMode || smartFolderMode) && debouncedQuery.trim().length > 0;
+  const isSearchPending =
+    hasQuery &&
+    (galleryMode || smartFolderMode) &&
+    (query.trim() !== debouncedQuery.trim() || searchMeta.searching);
 
-  const resultCount = filtered.folders.length + filtered.files.length;
+  const resultCount =
+    usesServerSearch && searchMeta.total != null
+      ? searchMeta.total
+      : filtered.folders.length + filtered.files.length;
 
   return (
     <div className="flex flex-1 flex-col gap-4">
@@ -68,7 +90,13 @@ export function DriveContent({
                             <BreadcrumbPage>{crumb.name}</BreadcrumbPage>
                           ) : (
                             <BreadcrumbLink asChild>
-                              <Link href={folderHref(space, crumb.id)}>
+                              <Link
+                                href={
+                                  crumb.smartFolderId
+                                    ? smartFolderHref(space, crumb.smartFolderId)
+                                    : folderHref(space, crumb.id)
+                                }
+                              >
                                 {crumb.name}
                               </Link>
                             </BreadcrumbLink>
@@ -81,9 +109,13 @@ export function DriveContent({
               </Breadcrumb>
               <p className="text-sm text-muted-foreground">
                 {hasQuery ? (
-                  <>
-                    {resultCount} résultat{resultCount > 1 ? "s" : ""}
-                  </>
+                  isSearchPending ? (
+                    <>Recherche…</>
+                  ) : (
+                    <>
+                      {resultCount} résultat{resultCount > 1 ? "s" : ""}
+                    </>
+                  )
                 ) : (
                   <>
                     {stats.fileCount} fichier
@@ -123,8 +155,11 @@ export function DriveContent({
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
       <DrivePanel
-        folders={filtered.folders}
-        files={filtered.files}
+        folders={folders}
+        files={files}
+        searchQuery={query}
+        debouncedSearchQuery={debouncedQuery}
+        onSearchMetaChange={setSearchMeta}
         view={view}
         space={space}
         folderId={folderId}
@@ -135,6 +170,8 @@ export function DriveContent({
         openFileId={openFileId}
         trashCount={folders.length + files.length}
         galleryMode={galleryMode}
+        smartFolderMode={smartFolderMode}
+        smartFolder={smartFolder}
         filesPagination={filesPagination}
       />
     </div>

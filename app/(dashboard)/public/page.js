@@ -10,6 +10,7 @@ export default async function PublicPage({ searchParams }) {
     <DriveBrowser
       space="public"
       folderId={params?.folder}
+      smartFolderId={params?.smart}
       openFileId={params?.file}
       view="browse"
     />

@@ -58,6 +58,7 @@ import {
    DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { folderHref, sortFilesByCaptureDate } from "@/lib/drive";
+import { filterDriveItems } from "@/lib/drive-search";
 import { formatBytes, formatDate } from "@/lib/format";
 import { listItemDelay, listItemIn, listItemTransition } from "@/lib/motion";
 import { itemSelectionKey } from "@/lib/tags";
@@ -280,7 +281,7 @@ function DriveGridItem({
             onDragStart={(event) => onItemDragStart(event, item)}
             className={cn(
                "group relative h-full w-full overflow-hidden border border-white/10 bg-black/20 transition hover:border-white/25",
-               compact ? "rounded-md" : "rounded-lg",
+               compact ? "rounded-md" : "rounded-xl",
                selected && "border-primary ring-2 ring-primary/60",
                (hasSelection || canDrag) &&
                   "cursor-grab active:cursor-grabbing",
@@ -470,6 +471,11 @@ export function DriveList({
    openFileId,
    layout = "list",
    galleryMode = false,
+   smartFolderMode = false,
+   smartFolder = null,
+   searchQuery = "",
+   debouncedSearchQuery = "",
+   onSearchMetaChange,
    filesPagination = null,
 }) {
    const router = useRouter();
@@ -482,24 +488,59 @@ export function DriveList({
    const [selectedKeys, setSelectedKeys] = useState(() => new Set());
    const [selectionAnchor, setSelectionAnchor] = useState(null);
 
+   const infiniteBrowse =
+      view === "browse" && (galleryMode || smartFolderMode);
+
+   const serverSearchActive =
+      infiniteBrowse && debouncedSearchQuery.trim().length > 0;
+
    const {
       files: galleryFiles,
       hasMore: galleryHasMore,
+      total: galleryTotal,
       loading: galleryLoading,
+      searching: gallerySearching,
       loadMore: loadMoreGallery,
    } = useInfiniteFiles({
       space,
       folderId: null,
+      tag: smartFolderMode ? smartFolder?.tag : null,
+      imagesOnly: smartFolderMode,
+      search: debouncedSearchQuery,
       initialFiles: files,
       initialPagination: filesPagination,
-      enabled: galleryMode && view === "browse",
+      enabled: infiniteBrowse,
    });
 
-   const displayFiles = galleryMode && view === "browse" ? galleryFiles : files;
+   useEffect(() => {
+      if (!onSearchMetaChange) return;
+      onSearchMetaChange({
+        total: serverSearchActive ? galleryTotal : null,
+        searching: serverSearchActive ? gallerySearching : false,
+      });
+   }, [
+      onSearchMetaChange,
+      serverSearchActive,
+      galleryTotal,
+      gallerySearching,
+   ]);
+
+   const displayFiles = infiniteBrowse ? galleryFiles : files;
+
+   const visibleFolders = useMemo(
+      () => filterDriveItems(folders, [], searchQuery).folders,
+      [folders, searchQuery],
+   );
+
+   const visibleFiles = useMemo(() => {
+      if (serverSearchActive) return galleryFiles;
+      if (!searchQuery.trim()) return displayFiles;
+      return filterDriveItems([], displayFiles, searchQuery).files;
+   }, [serverSearchActive, galleryFiles, displayFiles, searchQuery]);
 
    useEffect(() => {
       if (!openFileId) return;
-      const file = displayFiles.find(
+      const file = visibleFiles.find(
          (entry) => String(entry.id) === String(openFileId),
       );
       if (!file) return;
@@ -517,12 +558,12 @@ export function DriveList({
       return () => {
          cancelled = true;
       };
-   }, [openFileId, displayFiles]);
+   }, [openFileId, visibleFiles]);
 
    const isGridLayout = layout === "grid" || layout === "compact";
 
    const items = useMemo(() => {
-      const folderItems = folders.map((folder) => ({
+      const folderItems = visibleFolders.map((folder) => ({
          ...folder,
          kind: "folder",
          href:
@@ -531,7 +572,7 @@ export function DriveList({
                : null,
       }));
       const fileItems = sortFilesByCaptureDate(
-         displayFiles.map((file) => ({
+         visibleFiles.map((file) => ({
             ...file,
             kind: "file",
             href: null,
@@ -543,7 +584,7 @@ export function DriveList({
       }
 
       return [...folderItems, ...fileItems];
-   }, [folders, displayFiles, view, space, isGridLayout]);
+   }, [visibleFolders, visibleFiles, view, space, isGridLayout]);
 
    const itemsSignature = useMemo(
       () => items.map((item) => itemSelectionKey(item)).join("|"),
@@ -660,7 +701,7 @@ export function DriveList({
       dnd.beginDrag(event, {
          space: space || item.space,
          items: getDragItems(item),
-         sourceFolderId: galleryMode ? null : folderId,
+         sourceFolderId: galleryMode || smartFolderMode ? null : folderId,
       });
    }
 
@@ -891,10 +932,10 @@ export function DriveList({
                      />
                   )}
                </MasonryGrid>
-               {galleryMode ? (
+               {infiniteBrowse ? (
                   <InfiniteScrollSentinel
                      hasMore={galleryHasMore}
-                     loading={galleryLoading}
+                     loading={galleryLoading || gallerySearching}
                      onVisible={loadMoreGallery}
                   />
                ) : null}

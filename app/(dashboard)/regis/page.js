@@ -10,6 +10,7 @@ export default async function RegisPage({ searchParams }) {
     <DriveBrowser
       space="regis"
       folderId={params?.folder}
+      smartFolderId={params?.smart}
       openFileId={params?.file}
       view="browse"
     />

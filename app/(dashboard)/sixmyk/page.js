@@ -10,6 +10,7 @@ export default async function SixMykPage({ searchParams }) {
     <DriveBrowser
       space="sixmyk"
       folderId={params?.folder}
+      smartFolderId={params?.smart}
       openFileId={params?.file}
       view="browse"
     />

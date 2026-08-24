@@ -1,23 +1,12 @@
-import { getStorageStats } from "@/actions/files";
-import { checkBucketsHealth } from "@/actions/upload";
 import { formatBytes } from "@/lib/format";
 
-export const metadata = {
-  title: "Stockage | Graph & Co Drive",
-};
-
-export default async function StorageSettingsPage() {
-  const [stats, buckets] = await Promise.all([
-    getStorageStats(),
-    checkBucketsHealth(),
-  ]);
-
+export function StoragePanel({ stats, buckets, error = null }) {
   return (
-    <div className="max-w-xl space-y-4">
+    <section className="space-y-4">
       <div className="space-y-2">
-        <h1 className="text-lg font-medium">Stockage</h1>
+        <h2 className="text-base font-medium">Stockage</h2>
         <p className="text-sm text-muted-foreground">
-          Utilisation et santé des buckets S3.
+          Utilisation globale et santé des buckets S3.
         </p>
       </div>
 
@@ -56,9 +45,7 @@ export default async function StorageSettingsPage() {
         ))}
       </div>
 
-      {stats.error ? (
-        <p className="text-sm text-destructive">{stats.error}</p>
-      ) : null}
-    </div>
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+    </section>
   );
 }

@@ -14,7 +14,6 @@ const titles = {
   "/public": "Public",
   "/trash": "Corbeille",
   "/settings": "Paramètres",
-  "/settings/storage": "Stockage",
 };
 
 function buildCrumbs(pathname) {
@@ -37,11 +36,11 @@ function buildCrumbs(pathname) {
   return crumbs;
 }
 
-export function PageBreadcrumb({ pathname }) {
+export function PageBreadcrumb({ pathname, className }) {
   const crumbs = buildCrumbs(pathname);
 
   return (
-    <Breadcrumb>
+    <Breadcrumb className={className}>
       <BreadcrumbList>
         {crumbs.map((crumb, index) => {
           const isLast = index === crumbs.length - 1;

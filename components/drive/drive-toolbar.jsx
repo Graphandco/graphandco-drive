@@ -25,6 +25,7 @@ export function DriveToolbar({
   view,
   layout = "list",
   onLayoutChange,
+  smartFolderMode = false,
   trashCount = 0,
 }) {
   const router = useRouter();
@@ -114,6 +115,16 @@ export function DriveToolbar({
     return (
       <div className="flex flex-wrap items-center justify-end gap-2">
         <DriveViewToggle layout={layout} onChange={onLayoutChange} />
+      </div>
+    );
+  }
+
+  if (smartFolderMode) {
+    return (
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {typeof onLayoutChange === "function" ? (
+          <DriveViewToggle layout={layout} onChange={onLayoutChange} />
+        ) : null}
       </div>
     );
   }

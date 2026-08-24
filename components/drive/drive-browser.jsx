@@ -4,10 +4,16 @@ import { DriveContent } from "@/components/drive/drive-content";
 export async function DriveBrowser({
   space = "sixmyk",
   folderId,
+  smartFolderId,
   openFileId,
   view = "browse",
 }) {
-  const contents = await getDriveContents({ space, folderId, view });
+  const contents = await getDriveContents({
+    space,
+    folderId,
+    smartFolderId,
+    view,
+  });
 
   if (!contents.success && view === "browse") {
     return (
@@ -29,6 +35,8 @@ export async function DriveBrowser({
       openFileId={openFileId}
       error={contents.error || null}
       galleryMode={contents.galleryMode || false}
+      smartFolderMode={contents.smartFolderMode || false}
+      smartFolder={contents.smartFolder || null}
       filesPagination={contents.filesPagination || null}
     />
   );

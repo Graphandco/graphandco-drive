@@ -18,6 +18,11 @@ export function DrivePanel({
   openFileId,
   trashCount,
   galleryMode = false,
+  smartFolderMode = false,
+  smartFolder = null,
+  searchQuery = "",
+  debouncedSearchQuery = "",
+  onSearchMetaChange,
   filesPagination = null,
 }) {
   const [layout, setLayout] = useState("grid");
@@ -44,6 +49,7 @@ export function DrivePanel({
         view={view}
         layout={layout}
         onLayoutChange={onLayoutChange}
+        smartFolderMode={smartFolderMode}
         trashCount={
           typeof trashCount === "number"
             ? trashCount
@@ -59,6 +65,11 @@ export function DrivePanel({
         openFileId={openFileId}
         layout={layout}
         galleryMode={galleryMode}
+        smartFolderMode={smartFolderMode}
+        smartFolder={smartFolder}
+        searchQuery={searchQuery}
+        debouncedSearchQuery={debouncedSearchQuery}
+        onSearchMetaChange={onSearchMetaChange}
         filesPagination={filesPagination}
       />
     </>

@@ -1,10 +1,11 @@
 "use client";
 
-import { Globe, Lock, Settings2, Trash2, User } from "lucide-react";
+import { Globe, Lock, Trash2, User } from "lucide-react";
 
 import { BucketSwitcher } from "@/components/bucket-switcher";
 import { NavBuckets } from "@/components/nav-buckets";
 import { NavMain } from "@/components/nav-main";
+import { NavSmartFolders } from "@/components/nav-smart-folders";
 import { NavUser } from "@/components/nav-user";
 import {
   Sidebar,
@@ -20,7 +21,6 @@ const iconMap = {
   Globe,
   User,
   Trash2,
-  Settings2,
 };
 
 const buckets = mockBuckets.map((item) => ({
@@ -33,7 +33,7 @@ const navMain = mockNavMain.map((item) => ({
   icon: iconMap[item.icon],
 }));
 
-export function AppSidebar({ folderTrees, ...props }) {
+export function AppSidebar({ folderTrees, smartFolders = [], ...props }) {
   return (
     <Sidebar
       collapsible="icon"
@@ -45,6 +45,7 @@ export function AppSidebar({ folderTrees, ...props }) {
       </SidebarHeader>
       <SidebarContent>
         <NavBuckets buckets={buckets} folderTrees={folderTrees} />
+        <NavSmartFolders buckets={buckets} smartFolders={smartFolders} />
         <NavMain items={navMain} />
       </SidebarContent>
       <SidebarFooter>

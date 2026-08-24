@@ -12,16 +12,89 @@ import {
 import {
   getFolderStats,
   getSpaceStats,
+  getTagStats,
   listFilesPaginated,
 } from "@/actions/files";
+import { getSmartFolder } from "@/actions/smart-folders";
 import { deleteObject } from "@/lib/storage";
 
 export async function getDriveContents({
   space = "sixmyk",
   folderId,
+  smartFolderId,
   view = "browse",
 } = {}) {
   const spaceConfig = getSpaceConfig(space);
+
+  if (view === "browse" && smartFolderId) {
+    const smartResult = await getSmartFolder(smartFolderId);
+
+    if (!smartResult.success) {
+      return {
+        success: false,
+        error: smartResult.error,
+        folder: null,
+        path: [],
+        folders: [],
+        files: [],
+        stats: { fileCount: 0, totalBytes: 0 },
+        galleryMode: false,
+        smartFolderMode: false,
+        smartFolder: null,
+        filesPagination: null,
+      };
+    }
+
+    if (smartResult.data.space !== space) {
+      return {
+        success: false,
+        error: "Ce dossier intelligent n’appartient pas à cet espace.",
+        folder: null,
+        path: [],
+        folders: [],
+        files: [],
+        stats: { fileCount: 0, totalBytes: 0 },
+        galleryMode: false,
+        smartFolderMode: false,
+        smartFolder: null,
+        filesPagination: null,
+      };
+    }
+
+    const smartFolder = smartResult.data;
+    const [filesResult, statsResult] = await Promise.all([
+      listFilesPaginated({
+        space,
+        tag: smartFolder.tag,
+        imagesOnly: true,
+        folderId: null,
+        limit: FILES_PAGE_SIZE,
+        offset: 0,
+      }),
+      getTagStats({ space, tag: smartFolder.tag, imagesOnly: true }),
+    ]);
+
+    return {
+      success: true,
+      folder: null,
+      path: [
+        {
+          id: `smart-${smartFolder.id}`,
+          name: smartFolder.name,
+          smartFolderId: smartFolder.id,
+        },
+      ],
+      folders: [],
+      files: filesResult.data || [],
+      stats: statsResult.data || { fileCount: 0, totalBytes: 0 },
+      galleryMode: true,
+      smartFolderMode: true,
+      smartFolder,
+      filesPagination: filesResult.pagination || null,
+      error: filesResult.error || statsResult.error || null,
+    };
+  }
+
   const resolvedFolderId =
     view === "browse"
       ? Number(folderId) || spaceConfig.rootFolderId
@@ -40,6 +113,8 @@ export async function getDriveContents({
         files: [],
         stats: { fileCount: 0, totalBytes: 0 },
         galleryMode: false,
+        smartFolderMode: false,
+        smartFolder: null,
         filesPagination: null,
       };
     }
@@ -54,6 +129,8 @@ export async function getDriveContents({
         files: [],
         stats: { fileCount: 0, totalBytes: 0 },
         galleryMode: false,
+        smartFolderMode: false,
+        smartFolder: null,
         filesPagination: null,
       };
     }
@@ -88,6 +165,8 @@ export async function getDriveContents({
       files: filesResult.data || [],
       stats: statsResult.data || { fileCount: 0, totalBytes: 0 },
       galleryMode,
+      smartFolderMode: false,
+      smartFolder: null,
       filesPagination: filesResult.pagination || null,
       error:
         foldersResult.error ||
@@ -111,6 +190,8 @@ export async function getDriveContents({
     files: filesResult.data || [],
     stats: { fileCount: 0, totalBytes: 0 },
     galleryMode: false,
+    smartFolderMode: false,
+    smartFolder: null,
     filesPagination: filesResult.pagination || null,
     error: foldersResult.error || filesResult.error || null,
   };

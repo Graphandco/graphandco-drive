@@ -11,7 +11,7 @@ function revalidateDrive(spaceKey = "sixmyk") {
   const space = getSpaceConfig(spaceKey);
   revalidatePath(space.basePath);
   revalidatePath("/trash");
-  revalidatePath("/settings/storage");
+  revalidatePath("/settings");
   revalidatePath("/", "layout");
 }
 
@@ -78,6 +78,109 @@ export async function countFilesInSpace(space = "sixmyk") {
   return Number(rows[0]?.total || 0);
 }
 
+/** Filtre exact d’un tag dans la chaîne CSV (insensible à la casse). */
+function tagFilterClause(tag) {
+  const normalized = String(tag || "").trim().toLowerCase();
+  if (!normalized) return { sql: "", params: [] };
+
+  return {
+    sql: `AND CONCAT(',', REPLACE(REPLACE(LOWER(TRIM(f.tags)), ', ', ','), ';', ','), ',') LIKE ?`,
+    params: [`%,${normalized},%`],
+  };
+}
+
+/** Recherche libre (nom ou tags, insensible à la casse). */
+function searchFilterClause(search) {
+  const q = String(search || "").trim().toLowerCase();
+  if (!q) return { sql: "", params: [] };
+
+  const like = `%${q}%`;
+  return {
+    sql: `AND (
+      LOWER(f.name) LIKE ?
+      OR LOWER(COALESCE(f.tags, '')) LIKE ?
+      OR CONCAT(',', REPLACE(REPLACE(LOWER(TRIM(f.tags)), ', ', ','), ';', ','), ',') LIKE ?
+    )`,
+    params: [like, like, `%,${q},%`],
+  };
+}
+
+async function countBrowseFiles({
+  space,
+  folderId = null,
+  tag = null,
+  imagesOnly = false,
+  search = null,
+}) {
+  const tagFilter = tagFilterClause(tag);
+  const searchFilter = searchFilterClause(search);
+  const imageFilter = imagesOnly ? "AND f.mime_type LIKE 'image/%'" : "";
+
+  if (folderId != null) {
+    const rows = await query(
+      `SELECT COUNT(DISTINCT f.id) AS total, COALESCE(SUM(f.size_bytes), 0) AS bytes
+       FROM files f
+       INNER JOIN file_folders ff ON ff.file_id = f.id
+       WHERE ff.folder_id = ?
+         AND f.deleted_at IS NULL
+         ${imageFilter}
+         ${tagFilter.sql}
+         ${searchFilter.sql}`,
+      [Number(folderId), ...tagFilter.params, ...searchFilter.params]
+    );
+    return {
+      fileCount: Number(rows[0]?.total || 0),
+      totalBytes: Number(rows[0]?.bytes || 0),
+    };
+  }
+
+  const rows = await query(
+    `SELECT COUNT(*) AS total, COALESCE(SUM(f.size_bytes), 0) AS bytes
+     FROM files f
+     WHERE f.space = ?
+       AND f.deleted_at IS NULL
+       ${imageFilter}
+       ${tagFilter.sql}
+       ${searchFilter.sql}`,
+    [space, ...tagFilter.params, ...searchFilter.params]
+  );
+  return {
+    fileCount: Number(rows[0]?.total || 0),
+    totalBytes: Number(rows[0]?.bytes || 0),
+  };
+}
+
+async function countFilesByTag({ space, tag, imagesOnly = false }) {
+  const tagFilter = tagFilterClause(tag);
+  const rows = await query(
+    `SELECT COUNT(*) AS total, COALESCE(SUM(f.size_bytes), 0) AS bytes
+     FROM files f
+     WHERE f.space = ?
+       AND f.deleted_at IS NULL
+       ${imagesOnly ? "AND f.mime_type LIKE 'image/%'" : ""}
+       ${tagFilter.sql}`,
+    [space, ...tagFilter.params]
+  );
+  return {
+    fileCount: Number(rows[0]?.total || 0),
+    totalBytes: Number(rows[0]?.bytes || 0),
+  };
+}
+
+export async function getTagStats({ space, tag, imagesOnly = false }) {
+  try {
+    const data = await countFilesByTag({ space, tag, imagesOnly });
+    return { success: true, data };
+  } catch (error) {
+    console.error("getTagStats:", error);
+    return {
+      success: false,
+      error: error?.message || "Impossible de calculer les statistiques.",
+      data: { fileCount: 0, totalBytes: 0 },
+    };
+  }
+}
+
 /** Compte les fichiers liés à un dossier. */
 export async function countFilesInFolder(folderId) {
   const rows = await query(
@@ -97,6 +200,9 @@ export async function countFilesInFolder(folderId) {
 export async function listFilesPaginated({
   space = "sixmyk",
   folderId = null,
+  tag = null,
+  imagesOnly = false,
+  search = null,
   view = "browse",
   limit = FILES_PAGE_SIZE,
   offset = 0,
@@ -106,6 +212,12 @@ export async function listFilesPaginated({
       limit,
       offset
     );
+    const normalizedTag = String(tag || "").trim();
+    const normalizedSearch = String(search || "").trim();
+    const tagFilter = tagFilterClause(normalizedTag);
+    const searchFilter = searchFilterClause(normalizedSearch);
+    const imageFilter = imagesOnly ? "AND f.mime_type LIKE 'image/%'" : "";
+    const useSpaceBrowse = normalizedTag || folderId == null;
 
     if (view === "trash") {
       const rows = await query(
@@ -131,17 +243,27 @@ export async function listFilesPaginated({
       };
     }
 
-    if (folderId == null) {
+    if (useSpaceBrowse) {
       const rows = await query(
         `SELECT ${FILE_COLUMNS}
          FROM files f
          WHERE f.space = ?
            AND f.deleted_at IS NULL
+           ${imageFilter}
+           ${tagFilter.sql}
+           ${searchFilter.sql}
          ${FILE_ORDER_BROWSE}
          ${pageSql}`,
-        [space]
+        [space, ...tagFilter.params, ...searchFilter.params]
       );
-      const total = await countFilesInSpace(space);
+      const stats = await countBrowseFiles({
+        space,
+        folderId: null,
+        tag: normalizedTag || null,
+        imagesOnly,
+        search: normalizedSearch || null,
+      });
+      const total = stats.fileCount;
       return {
         success: true,
         data: rows,
@@ -160,11 +282,19 @@ export async function listFilesPaginated({
        INNER JOIN file_folders ff ON ff.file_id = f.id
        WHERE ff.folder_id = ?
          AND f.deleted_at IS NULL
+         ${imageFilter}
+         ${searchFilter.sql}
        ${FILE_ORDER_BROWSE}
        ${pageSql}`,
-      [Number(folderId)]
+      [Number(folderId), ...searchFilter.params]
     );
-    const total = await countFilesInFolder(folderId);
+    const stats = await countBrowseFiles({
+      space,
+      folderId,
+      imagesOnly,
+      search: normalizedSearch || null,
+    });
+    const total = stats.fileCount;
     return {
       success: true,
       data: rows,

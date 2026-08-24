@@ -17,7 +17,7 @@ function revalidateDrive(spaceKey = "sixmyk") {
   const space = getSpaceConfig(spaceKey);
   revalidatePath(space.basePath);
   revalidatePath("/trash");
-  revalidatePath("/settings/storage");
+  revalidatePath("/settings");
   revalidatePath("/", "layout");
 }
 

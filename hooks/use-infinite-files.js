@@ -3,30 +3,101 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { listFilesPaginated } from "@/actions";
+import { FILES_PAGE_SIZE } from "@/lib/drive";
 
 /**
- * Charge les fichiers page par page (galerie accueil Régis).
+ * Charge les fichiers page par page (galerie, smart folder, recherche).
  */
 export function useInfiniteFiles({
   space,
   folderId = null,
+  tag = null,
+  imagesOnly = false,
+  search = "",
   initialFiles = [],
   initialPagination = null,
   enabled = false,
 }) {
   const [files, setFiles] = useState(initialFiles);
-  const [hasMore, setHasMore] = useState(
-    initialPagination?.hasMore ?? false
-  );
+  const [hasMore, setHasMore] = useState(initialPagination?.hasMore ?? false);
+  const [total, setTotal] = useState(initialPagination?.total ?? initialFiles.length);
   const [loading, setLoading] = useState(false);
+  const [searching, setSearching] = useState(false);
   const loadingRef = useRef(false);
   const offsetRef = useRef(initialFiles.length);
+  const pageLimit = initialPagination?.limit ?? FILES_PAGE_SIZE;
+
+  const normalizedSearch = String(search || "").trim();
+  const hasSearch = Boolean(normalizedSearch);
 
   useEffect(() => {
+    if (!enabled || hasSearch) return;
+
     setFiles(initialFiles);
     setHasMore(initialPagination?.hasMore ?? false);
+    setTotal(initialPagination?.total ?? initialFiles.length);
     offsetRef.current = initialFiles.length;
-  }, [initialFiles, initialPagination, space, folderId]);
+  }, [
+    enabled,
+    hasSearch,
+    initialFiles,
+    initialPagination,
+    space,
+    folderId,
+    tag,
+    imagesOnly,
+  ]);
+
+  useEffect(() => {
+    if (!enabled || !hasSearch) return;
+
+    let cancelled = false;
+
+    async function fetchSearchPage() {
+      loadingRef.current = true;
+      setSearching(true);
+
+      try {
+        const result = await listFilesPaginated({
+          space,
+          folderId: tag ? null : folderId,
+          tag: tag || null,
+          imagesOnly,
+          search: normalizedSearch,
+          limit: pageLimit,
+          offset: 0,
+        });
+
+        if (cancelled || !result.success) return;
+
+        const next = result.data || [];
+        setFiles(next);
+        offsetRef.current = next.length;
+        setHasMore(result.pagination?.hasMore ?? false);
+        setTotal(result.pagination?.total ?? next.length);
+      } finally {
+        if (!cancelled) {
+          loadingRef.current = false;
+          setSearching(false);
+        }
+      }
+    }
+
+    fetchSearchPage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    enabled,
+    hasSearch,
+    normalizedSearch,
+    space,
+    folderId,
+    tag,
+    imagesOnly,
+    pageLimit,
+  ]);
 
   const loadMore = useCallback(async () => {
     if (!enabled || loadingRef.current || !hasMore) return;
@@ -37,8 +108,11 @@ export function useInfiniteFiles({
     try {
       const result = await listFilesPaginated({
         space,
-        folderId,
-        limit: initialPagination?.limit,
+        folderId: tag ? null : folderId,
+        tag: tag || null,
+        imagesOnly,
+        search: hasSearch ? normalizedSearch : null,
+        limit: pageLimit,
         offset: offsetRef.current,
       });
 
@@ -58,11 +132,30 @@ export function useInfiniteFiles({
         return merged;
       });
       setHasMore(result.pagination?.hasMore ?? false);
+      setTotal(result.pagination?.total ?? offsetRef.current);
     } finally {
       loadingRef.current = false;
       setLoading(false);
     }
-  }, [enabled, hasMore, space, folderId, initialPagination?.limit]);
+  }, [
+    enabled,
+    hasMore,
+    hasSearch,
+    normalizedSearch,
+    space,
+    folderId,
+    tag,
+    imagesOnly,
+    pageLimit,
+  ]);
 
-  return { files, hasMore, loading, loadMore, setFiles };
+  return {
+    files,
+    hasMore,
+    total,
+    loading,
+    searching,
+    loadMore,
+    setFiles,
+  };
 }
