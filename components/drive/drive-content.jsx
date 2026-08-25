@@ -38,6 +38,7 @@ export function DriveContent({
   smartFolderMode = false,
   smartFolder = null,
   filesPagination = null,
+  recentDays = null,
 }) {
   const spaceConfig = getSpaceConfig(space);
   const folderId = folder?.id || spaceConfig.rootFolderId;
@@ -58,13 +59,17 @@ export function DriveContent({
     [folders, files, query]
   );
 
+  const crossSpaceMode = view === "recent" || view === "orphans";
   const showBreadcrumbs = view === "browse" && path.length > 0;
+  const showPageMeta = crossSpaceMode || showBreadcrumbs;
   const hasQuery = query.trim().length > 0;
+  const infiniteBrowse =
+    crossSpaceMode || galleryMode || smartFolderMode;
   const usesServerSearch =
-    hasQuery && (galleryMode || smartFolderMode) && debouncedQuery.trim().length > 0;
+    hasQuery && infiniteBrowse && debouncedQuery.trim().length > 0;
   const isSearchPending =
     hasQuery &&
-    (galleryMode || smartFolderMode) &&
+    infiniteBrowse &&
     (query.trim() !== debouncedQuery.trim() || searchMeta.searching);
 
   const resultCount =
@@ -76,37 +81,49 @@ export function DriveContent({
     <div className="flex flex-1 flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div className="min-w-0 flex-1">
-          {showBreadcrumbs ? (
+          {showPageMeta ? (
             <div className="flex flex-col gap-1.5">
-              <Breadcrumb>
-                <BreadcrumbList>
-                  {path.map((crumb, index) => {
-                    const isLast = index === path.length - 1;
-                    return (
-                      <span key={crumb.id} className="contents">
-                        {index > 0 ? <BreadcrumbSeparator /> : null}
-                        <BreadcrumbItem>
-                          {isLast ? (
-                            <BreadcrumbPage>{crumb.name}</BreadcrumbPage>
-                          ) : (
-                            <BreadcrumbLink asChild>
-                              <Link
-                                href={
-                                  crumb.smartFolderId
-                                    ? smartFolderHref(space, crumb.smartFolderId)
-                                    : folderHref(space, crumb.id)
-                                }
-                              >
-                                {crumb.name}
-                              </Link>
-                            </BreadcrumbLink>
-                          )}
-                        </BreadcrumbItem>
-                      </span>
-                    );
-                  })}
-                </BreadcrumbList>
-              </Breadcrumb>
+              {showBreadcrumbs ? (
+                <Breadcrumb>
+                  <BreadcrumbList>
+                    {path.map((crumb, index) => {
+                      const isLast = index === path.length - 1;
+                      return (
+                        <span key={crumb.id} className="contents">
+                          {index > 0 ? <BreadcrumbSeparator /> : null}
+                          <BreadcrumbItem>
+                            {isLast ? (
+                              <BreadcrumbPage>{crumb.name}</BreadcrumbPage>
+                            ) : (
+                              <BreadcrumbLink asChild>
+                                <Link
+                                  href={
+                                    crumb.smartFolderId
+                                      ? smartFolderHref(space, crumb.smartFolderId)
+                                      : folderHref(space, crumb.id)
+                                  }
+                                >
+                                  {crumb.name}
+                                </Link>
+                              </BreadcrumbLink>
+                            )}
+                          </BreadcrumbItem>
+                        </span>
+                      );
+                    })}
+                  </BreadcrumbList>
+                </Breadcrumb>
+              ) : view === "recent" ? (
+                <p className="text-sm font-medium">
+                  {recentDays
+                    ? `Modifiés dans les ${recentDays} derniers jours`
+                    : "Tous espaces confondus"}
+                </p>
+              ) : view === "orphans" ? (
+                <p className="text-sm font-medium">
+                  Fichiers non liés à un dossier
+                </p>
+              ) : null}
               <p className="text-sm text-muted-foreground">
                 {hasQuery ? (
                   isSearchPending ? (
@@ -173,6 +190,8 @@ export function DriveContent({
         smartFolderMode={smartFolderMode}
         smartFolder={smartFolder}
         filesPagination={filesPagination}
+        crossSpaceMode={crossSpaceMode}
+        recentDays={recentDays}
       />
     </div>
   );

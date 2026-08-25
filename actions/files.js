@@ -6,16 +6,20 @@ import { getFolder } from "@/actions/folders";
 import { query } from "@/lib/db";
 import { linkFileToFolder } from "@/lib/file-folders";
 import { getSpaceConfig, FILES_PAGE_SIZE } from "@/lib/drive";
+import { resolveRecentDays } from "@/lib/recent-settings";
 
 function revalidateDrive(spaceKey = "sixmyk") {
   const space = getSpaceConfig(spaceKey);
   revalidatePath(space.basePath);
   revalidatePath("/trash");
+  revalidatePath("/recent");
+  revalidatePath("/orphans");
+  revalidatePath("/tags");
   revalidatePath("/settings");
   revalidatePath("/", "layout");
 }
 
-const FILE_COLUMNS = `f.id, f.space, f.name, f.mime_type, f.size_bytes, f.storage_location, f.storage_key, f.thumbnail_key, f.tags, f.captured_at, f.width_px, f.height_px, f.is_shared, f.deleted_at, f.created_at, f.updated_at`;
+const FILE_COLUMNS = `f.id, f.space, f.name, f.mime_type, f.size_bytes, f.storage_location, f.storage_key, f.thumbnail_key, f.tags, f.captured_at, f.width_px, f.height_px, f.deleted_at, f.created_at, f.updated_at`;
 
 const FILE_ORDER_BROWSE = `ORDER BY f.captured_at DESC, f.created_at DESC, f.name ASC`;
 
@@ -45,7 +49,7 @@ function paginationClause(limit, offset) {
 export async function getFile(fileId) {
   try {
     const rows = await query(
-      `SELECT id, folder_id, space, name, mime_type, size_bytes, storage_location, storage_key, thumbnail_key, tags, captured_at, width_px, height_px, is_shared, deleted_at, created_at, updated_at
+      `SELECT id, folder_id, space, name, mime_type, size_bytes, storage_location, storage_key, thumbnail_key, tags, captured_at, width_px, height_px, deleted_at, created_at, updated_at
        FROM files
        WHERE id = ?
        LIMIT 1`,
@@ -204,6 +208,7 @@ export async function listFilesPaginated({
   imagesOnly = false,
   search = null,
   view = "browse",
+  recentDays = null,
   limit = FILES_PAGE_SIZE,
   offset = 0,
 } = {}) {
@@ -219,9 +224,88 @@ export async function listFilesPaginated({
     const imageFilter = imagesOnly ? "AND f.mime_type LIKE 'image/%'" : "";
     const useSpaceBrowse = normalizedTag || folderId == null;
 
+    if (view === "recent") {
+      const days = resolveRecentDays(recentDays);
+      const searchFilter = searchFilterClause(normalizedSearch);
+      const rows = await query(
+        `SELECT ${FILE_COLUMNS}
+         FROM files f
+         WHERE f.deleted_at IS NULL
+           AND f.updated_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+           ${searchFilter.sql}
+         ORDER BY f.updated_at DESC, f.created_at DESC
+         ${pageSql}`,
+        [days, ...searchFilter.params]
+      );
+      const countRows = await query(
+        `SELECT COUNT(*) AS total, COALESCE(SUM(size_bytes), 0) AS bytes
+         FROM files f
+         WHERE f.deleted_at IS NULL
+           AND f.updated_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+           ${searchFilter.sql}`,
+        [days, ...searchFilter.params]
+      );
+      const total = Number(countRows[0]?.total || 0);
+      return {
+        success: true,
+        data: rows,
+        pagination: {
+          total,
+          limit: pageLimit,
+          offset: pageOffset,
+          hasMore: pageOffset + rows.length < total,
+        },
+        stats: {
+          fileCount: total,
+          totalBytes: Number(countRows[0]?.bytes || 0),
+        },
+      };
+    }
+
+    if (view === "orphans") {
+      const searchFilter = searchFilterClause(normalizedSearch);
+      const rows = await query(
+        `SELECT ${FILE_COLUMNS}
+         FROM files f
+         WHERE f.deleted_at IS NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM file_folders ff WHERE ff.file_id = f.id
+           )
+           ${searchFilter.sql}
+         ORDER BY f.updated_at DESC, f.name ASC
+         ${pageSql}`,
+        [...searchFilter.params]
+      );
+      const countRows = await query(
+        `SELECT COUNT(*) AS total, COALESCE(SUM(f.size_bytes), 0) AS bytes
+         FROM files f
+         WHERE f.deleted_at IS NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM file_folders ff WHERE ff.file_id = f.id
+           )
+           ${searchFilter.sql}`,
+        [...searchFilter.params]
+      );
+      const total = Number(countRows[0]?.total || 0);
+      return {
+        success: true,
+        data: rows,
+        pagination: {
+          total,
+          limit: pageLimit,
+          offset: pageOffset,
+          hasMore: pageOffset + rows.length < total,
+        },
+        stats: {
+          fileCount: total,
+          totalBytes: Number(countRows[0]?.bytes || 0),
+        },
+      };
+    }
+
     if (view === "trash") {
       const rows = await query(
-        `SELECT id, folder_id, space, name, mime_type, size_bytes, storage_location, storage_key, thumbnail_key, tags, captured_at, width_px, height_px, is_shared, deleted_at, created_at, updated_at
+        `SELECT id, folder_id, space, name, mime_type, size_bytes, storage_location, storage_key, thumbnail_key, tags, captured_at, width_px, height_px, deleted_at, created_at, updated_at
          FROM files
          WHERE deleted_at IS NOT NULL
          ORDER BY deleted_at DESC

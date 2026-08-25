@@ -14,6 +14,8 @@ export function useInfiniteFiles({
   tag = null,
   imagesOnly = false,
   search = "",
+  view = "browse",
+  recentDays = null,
   initialFiles = [],
   initialPagination = null,
   enabled = false,
@@ -46,6 +48,8 @@ export function useInfiniteFiles({
     folderId,
     tag,
     imagesOnly,
+    view,
+    recentDays,
   ]);
 
   useEffect(() => {
@@ -64,6 +68,8 @@ export function useInfiniteFiles({
           tag: tag || null,
           imagesOnly,
           search: normalizedSearch,
+          view,
+          recentDays,
           limit: pageLimit,
           offset: 0,
         });
@@ -97,6 +103,8 @@ export function useInfiniteFiles({
     tag,
     imagesOnly,
     pageLimit,
+    view,
+    recentDays,
   ]);
 
   const loadMore = useCallback(async () => {
@@ -112,6 +120,8 @@ export function useInfiniteFiles({
         tag: tag || null,
         imagesOnly,
         search: hasSearch ? normalizedSearch : null,
+        view,
+        recentDays,
         limit: pageLimit,
         offset: offsetRef.current,
       });
@@ -147,6 +157,8 @@ export function useInfiniteFiles({
     tag,
     imagesOnly,
     pageLimit,
+    view,
+    recentDays,
   ]);
 
   return {

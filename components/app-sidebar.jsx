@@ -1,6 +1,6 @@
 "use client";
 
-import { Globe, Lock, Trash2, User } from "lucide-react";
+import { Clock, FolderOpen, Globe, Lock, Tags, Trash2, User } from "lucide-react";
 
 import { BucketSwitcher } from "@/components/bucket-switcher";
 import { NavBuckets } from "@/components/nav-buckets";
@@ -21,6 +21,9 @@ const iconMap = {
   Globe,
   User,
   Trash2,
+  Tags,
+  Clock,
+  FolderOpen,
 };
 
 const buckets = mockBuckets.map((item) => ({

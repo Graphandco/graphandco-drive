@@ -7,15 +7,20 @@ export async function DriveBrowser({
   smartFolderId,
   openFileId,
   view = "browse",
+  recentDays = null,
 }) {
   const contents = await getDriveContents({
     space,
     folderId,
     smartFolderId,
     view,
+    recentDays,
   });
 
-  if (!contents.success && view === "browse") {
+  if (
+    !contents.success &&
+    (view === "browse" || view === "recent" || view === "orphans")
+  ) {
     return (
       <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
         {contents.error || "Impossible de charger le Drive."}
@@ -38,6 +43,7 @@ export async function DriveBrowser({
       smartFolderMode={contents.smartFolderMode || false}
       smartFolder={contents.smartFolder || null}
       filesPagination={contents.filesPagination || null}
+      recentDays={contents.recentDays ?? recentDays}
     />
   );
 }

@@ -13,6 +13,9 @@ const titles = {
   "/regis": "Régis",
   "/public": "Public",
   "/trash": "Corbeille",
+  "/tags": "Tags",
+  "/recent": "Fichiers récents",
+  "/orphans": "Sans dossier",
   "/settings": "Paramètres",
 };
 

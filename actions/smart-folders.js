@@ -9,6 +9,7 @@ import { parseTags } from "@/lib/tags";
 function revalidateSpace(spaceKey) {
   const space = getSpaceConfig(spaceKey);
   revalidatePath(space.basePath);
+  revalidatePath("/tags");
   revalidatePath("/", "layout");
 }
 
@@ -167,6 +168,72 @@ export async function deleteSmartFolder(id) {
     return {
       success: false,
       error: error?.message || "Impossible de supprimer le dossier intelligent.",
+    };
+  }
+}
+
+export async function updateSmartFolder({ id, name, tag }) {
+  const folderId = Number(id);
+  if (!folderId) {
+    return { success: false, error: "Identifiant requis." };
+  }
+
+  try {
+    const existing = await getSmartFolder(folderId);
+    if (!existing.success) return existing;
+
+    const nextName =
+      name !== undefined
+        ? String(name || "").trim() || existing.data.name
+        : existing.data.name;
+    const nextTag =
+      tag !== undefined
+        ? String(tag || "").trim() || existing.data.tag
+        : existing.data.tag;
+
+    if (!nextName || !nextTag) {
+      return { success: false, error: "Nom et tag requis." };
+    }
+
+    if (nextTag.toLowerCase() !== existing.data.tag.toLowerCase()) {
+      const duplicate = await query(
+        `SELECT id FROM smart_folders
+         WHERE space = ?
+           AND LOWER(tag) = LOWER(?)
+           AND id != ?
+         LIMIT 1`,
+        [existing.data.space, nextTag, folderId]
+      );
+
+      if (duplicate.length) {
+        return {
+          success: false,
+          error: "Un dossier intelligent existe déjà pour ce tag.",
+        };
+      }
+    }
+
+    await query(
+      `UPDATE smart_folders SET name = ?, tag = ? WHERE id = ?`,
+      [nextName, nextTag, folderId]
+    );
+
+    revalidateSpace(existing.data.space);
+
+    return {
+      success: true,
+      data: {
+        id: folderId,
+        space: existing.data.space,
+        name: nextName,
+        tag: nextTag,
+      },
+    };
+  } catch (error) {
+    console.error("updateSmartFolder:", error);
+    return {
+      success: false,
+      error: error?.message || "Impossible de modifier le dossier intelligent.",
     };
   }
 }

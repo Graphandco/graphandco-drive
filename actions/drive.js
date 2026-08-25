@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { getSpaceConfig, isGalleryHome, FILES_PAGE_SIZE } from "@/lib/drive";
+import { resolveRecentDays } from "@/lib/recent-settings";
 import { query } from "@/lib/db";
 import {
   getFolder,
@@ -23,8 +24,63 @@ export async function getDriveContents({
   folderId,
   smartFolderId,
   view = "browse",
+  recentDays = null,
 } = {}) {
   const spaceConfig = getSpaceConfig(space);
+
+  if (view === "recent") {
+    const days = resolveRecentDays(recentDays);
+    const filesResult = await listFilesPaginated({
+      view: "recent",
+      recentDays: days,
+      limit: FILES_PAGE_SIZE,
+      offset: 0,
+    });
+
+    return {
+      success: true,
+      folder: null,
+      path: [],
+      folders: [],
+      files: filesResult.data || [],
+      stats: filesResult.stats || {
+        fileCount: filesResult.pagination?.total || 0,
+        totalBytes: 0,
+      },
+      galleryMode: false,
+      smartFolderMode: false,
+      smartFolder: null,
+      filesPagination: filesResult.pagination || null,
+      recentDays: days,
+      error: filesResult.error || null,
+    };
+  }
+
+  if (view === "orphans") {
+    const filesResult = await listFilesPaginated({
+      view: "orphans",
+      limit: FILES_PAGE_SIZE,
+      offset: 0,
+    });
+
+    return {
+      success: true,
+      folder: null,
+      path: [],
+      folders: [],
+      files: filesResult.data || [],
+      stats: filesResult.stats || {
+        fileCount: filesResult.pagination?.total || 0,
+        totalBytes: 0,
+      },
+      galleryMode: false,
+      smartFolderMode: false,
+      smartFolder: null,
+      filesPagination: filesResult.pagination || null,
+      recentDays: null,
+      error: filesResult.error || null,
+    };
+  }
 
   if (view === "browse" && smartFolderId) {
     const smartResult = await getSmartFolder(smartFolderId);
@@ -242,6 +298,8 @@ export async function emptyTrash() {
     );
 
     revalidatePath("/trash");
+    revalidatePath("/recent");
+    revalidatePath("/orphans");
     revalidatePath("/sixmyk");
     revalidatePath("/regis");
     revalidatePath("/public");

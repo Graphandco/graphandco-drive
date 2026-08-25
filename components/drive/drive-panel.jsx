@@ -24,6 +24,8 @@ export function DrivePanel({
   debouncedSearchQuery = "",
   onSearchMetaChange,
   filesPagination = null,
+  crossSpaceMode = false,
+  recentDays = null,
 }) {
   const [layout, setLayout] = useState("grid");
 
@@ -71,6 +73,8 @@ export function DrivePanel({
         debouncedSearchQuery={debouncedSearchQuery}
         onSearchMetaChange={onSearchMetaChange}
         filesPagination={filesPagination}
+        crossSpaceMode={crossSpaceMode}
+        recentDays={recentDays}
       />
     </>
   );

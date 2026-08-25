@@ -1,48 +1,74 @@
+import { CheckCircle2, CircleX } from "lucide-react";
+
 import { formatBytes } from "@/lib/format";
 
-export function StoragePanel({ stats, buckets, error = null }) {
+const BUCKETS = [
+  { key: "regis", label: "Régis (NAS)" },
+  { key: "public", label: "Public" },
+  { key: "sixmyk", label: "Six-MyK (privé)" },
+];
+
+export function StoragePanel({ stats, buckets, spaceStats = {}, error = null }) {
   return (
-    <section className="space-y-4">
-      <div className="space-y-2">
-        <h2 className="text-base font-medium">Stockage</h2>
-        <p className="text-sm text-muted-foreground">
-          Utilisation globale et santé des buckets S3.
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div className="space-y-1">
+          <h2 className="text-base font-medium">Stockage</h2>
+          <p className="text-sm text-muted-foreground">
+            Utilisation par espace et santé des buckets S3.
+          </p>
+        </div>
+        <p className="text-sm tabular-nums text-muted-foreground">
+          {stats.data.fileCount} fichier{stats.data.fileCount > 1 ? "s" : ""}
+          <span className="mx-1.5 text-white/20">·</span>
+          {formatBytes(stats.data.totalBytes)} au total
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-          <p className="text-xs text-muted-foreground">Fichiers</p>
-          <p className="mt-1 text-2xl font-medium tabular-nums">
-            {stats.data.fileCount}
-          </p>
-        </div>
-        <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-          <p className="text-xs text-muted-foreground">Volume</p>
-          <p className="mt-1 text-2xl font-medium tabular-nums">
-            {formatBytes(stats.data.totalBytes)}
-          </p>
-        </div>
-      </div>
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-3 lg:gap-3">
+        {BUCKETS.map((item) => {
+          const health = buckets[item.key];
+          const usage = spaceStats[item.key]?.data || {
+            fileCount: 0,
+            totalBytes: 0,
+          };
+          const healthy = health?.ok;
+          const statusTitle = healthy
+            ? `Bucket accessible · ${health.bucket}`
+            : health?.error || "Bucket indisponible";
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        {[
-          { key: "regis", label: "Régis (NAS)", data: buckets.regis },
-          { key: "public", label: "Public", data: buckets.public },
-          { key: "sixmyk", label: "Six-MyK (privé)", data: buckets.sixmyk },
-        ].map((item) => (
-          <div
-            key={item.key}
-            className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm"
-          >
-            <p className="text-xs text-muted-foreground">{item.label}</p>
-            <p className="mt-1">
-              {item.data.ok
-                ? `OK · ${item.data.bucket}`
-                : `Erreur · ${item.data.error}`}
-            </p>
-          </div>
-        ))}
+          return (
+            <div
+              key={item.key}
+              className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/20 px-3 py-2.5"
+              title={statusTitle}
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                {healthy ? (
+                  <CheckCircle2
+                    className="size-4 shrink-0 text-emerald-400"
+                    aria-label="Bucket accessible"
+                  />
+                ) : (
+                  <CircleX
+                    className="size-4 shrink-0 text-destructive"
+                    aria-label="Bucket indisponible"
+                  />
+                )}
+                <p className="truncate text-sm font-medium">{item.label}</p>
+              </div>
+
+              <div className="shrink-0 text-right tabular-nums">
+                <p className="text-sm leading-tight">
+                  {usage.fileCount} fichier{usage.fileCount > 1 ? "s" : ""}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {formatBytes(usage.totalBytes)}
+                </p>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}

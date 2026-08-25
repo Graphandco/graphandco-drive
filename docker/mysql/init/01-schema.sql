@@ -12,7 +12,6 @@ CREATE TABLE folders (
   parent_id BIGINT UNSIGNED NULL,
   space ENUM('sixmyk', 'public', 'regis') NOT NULL DEFAULT 'sixmyk',
   name VARCHAR(255) NOT NULL,
-  is_shared TINYINT(1) NOT NULL DEFAULT 0,
   deleted_at TIMESTAMP NULL DEFAULT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -20,7 +19,6 @@ CREATE TABLE folders (
   KEY idx_folders_parent (parent_id),
   KEY idx_folders_space (space),
   KEY idx_folders_deleted (deleted_at),
-  KEY idx_folders_shared (is_shared),
   CONSTRAINT fk_folders_parent
     FOREIGN KEY (parent_id) REFERENCES folders (id)
     ON DELETE CASCADE
@@ -40,7 +38,6 @@ CREATE TABLE files (
   captured_at DATETIME NULL,
   width_px INT UNSIGNED NULL,
   height_px INT UNSIGNED NULL,
-  is_shared TINYINT(1) NOT NULL DEFAULT 0,
   deleted_at TIMESTAMP NULL DEFAULT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -48,7 +45,6 @@ CREATE TABLE files (
   KEY idx_files_folder (folder_id),
   KEY idx_files_space (space),
   KEY idx_files_deleted (deleted_at),
-  KEY idx_files_shared (is_shared),
   CONSTRAINT fk_files_folder
     FOREIGN KEY (folder_id) REFERENCES folders (id)
     ON DELETE SET NULL

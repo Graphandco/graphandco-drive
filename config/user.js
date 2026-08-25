@@ -31,6 +31,24 @@ export const mockBuckets = [
 
 export const mockNavMain = [
   {
+    title: "Tags",
+    url: "/tags",
+    icon: "Tags",
+    items: [],
+  },
+  {
+    title: "Récents",
+    url: "/recent",
+    icon: "Clock",
+    items: [],
+  },
+  {
+    title: "Sans dossier",
+    url: "/orphans",
+    icon: "FolderOpen",
+    items: [],
+  },
+  {
     title: "Corbeille",
     url: "/trash",
     icon: "Trash2",

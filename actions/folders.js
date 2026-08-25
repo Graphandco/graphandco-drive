@@ -9,13 +9,16 @@ function revalidateDrive(spaceKey = "sixmyk") {
   const space = getSpaceConfig(spaceKey);
   revalidatePath(space.basePath);
   revalidatePath("/trash");
+  revalidatePath("/recent");
+  revalidatePath("/orphans");
+  revalidatePath("/tags");
   revalidatePath("/", "layout");
 }
 
 export async function getFolder(folderId) {
   try {
     const rows = await query(
-      `SELECT id, parent_id, space, name, is_shared, deleted_at, created_at, updated_at
+      `SELECT id, parent_id, space, name, deleted_at, created_at, updated_at
        FROM folders
        WHERE id = ?
        LIMIT 1`,
@@ -75,7 +78,7 @@ export async function listFolders({
   try {
     if (view === "trash") {
       const rows = await query(
-        `SELECT id, parent_id, space, name, is_shared, deleted_at, created_at, updated_at
+        `SELECT id, parent_id, space, name, deleted_at, created_at, updated_at
          FROM folders
          WHERE deleted_at IS NOT NULL
          ORDER BY deleted_at DESC`
@@ -87,7 +90,7 @@ export async function listFolders({
     const rows =
       parentId == null
         ? await query(
-            `SELECT id, parent_id, space, name, is_shared, deleted_at, created_at, updated_at
+            `SELECT id, parent_id, space, name, deleted_at, created_at, updated_at
              FROM folders
              WHERE parent_id IS NULL
                AND space = ?
@@ -96,7 +99,7 @@ export async function listFolders({
             [space]
           )
         : await query(
-            `SELECT id, parent_id, space, name, is_shared, deleted_at, created_at, updated_at
+            `SELECT id, parent_id, space, name, deleted_at, created_at, updated_at
              FROM folders
              WHERE parent_id = ?
                AND deleted_at IS NULL

@@ -57,7 +57,7 @@ import {
    DropdownMenuSeparator,
    DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { folderHref, sortFilesByCaptureDate } from "@/lib/drive";
+import { folderHref, getSpaceConfig, sortFilesByCaptureDate } from "@/lib/drive";
 import { filterDriveItems } from "@/lib/drive-search";
 import { formatBytes, formatDate } from "@/lib/format";
 import { listItemDelay, listItemIn, listItemTransition } from "@/lib/motion";
@@ -365,6 +365,7 @@ function DriveListRow({
    pending,
    menuProps,
    space,
+   showSpace = false,
    onItemDragStart,
    handleItemActivate,
    toggleItemSelection,
@@ -391,6 +392,8 @@ function DriveListRow({
          onDragStart={(event) => onItemDragStart(event, item)}
          className={cn(
             "relative grid grid-cols-[28px_minmax(0,1fr)_88px] items-center gap-2 px-3 py-2.5 sm:grid-cols-[28px_minmax(0,1fr)_100px_88px] md:grid-cols-[28px_minmax(0,1fr)_100px_150px_88px]",
+            showSpace &&
+               "sm:grid-cols-[28px_minmax(0,1fr)_88px_100px_88px] md:grid-cols-[28px_minmax(0,1fr)_88px_100px_150px_88px]",
             selected && "bg-primary/10",
             dropActive &&
                (dropIsMove
@@ -443,6 +446,11 @@ function DriveListRow({
             </div>
          )}
 
+         {showSpace ? (
+            <span className="hidden text-xs text-muted-foreground sm:block">
+               {item.kind === "file" ? getSpaceConfig(item.space).label : "—"}
+            </span>
+         ) : null}
          <span className="hidden text-sm text-muted-foreground sm:block">
             {item.kind === "file" ? formatBytes(item.size_bytes) : "—"}
          </span>
@@ -477,6 +485,8 @@ export function DriveList({
    debouncedSearchQuery = "",
    onSearchMetaChange,
    filesPagination = null,
+   crossSpaceMode = false,
+   recentDays = null,
 }) {
    const router = useRouter();
    const dnd = useDriveDndOptional();
@@ -489,7 +499,9 @@ export function DriveList({
    const [selectionAnchor, setSelectionAnchor] = useState(null);
 
    const infiniteBrowse =
-      view === "browse" && (galleryMode || smartFolderMode);
+      view === "recent" ||
+      view === "orphans" ||
+      (view === "browse" && (galleryMode || smartFolderMode));
 
    const serverSearchActive =
       infiniteBrowse && debouncedSearchQuery.trim().length > 0;
@@ -507,6 +519,8 @@ export function DriveList({
       tag: smartFolderMode ? smartFolder?.tag : null,
       imagesOnly: smartFolderMode,
       search: debouncedSearchQuery,
+      view: crossSpaceMode ? view : "browse",
+      recentDays,
       initialFiles: files,
       initialPagination: filesPagination,
       enabled: infiniteBrowse,
@@ -571,20 +585,26 @@ export function DriveList({
                ? folderHref(folder.space || space, folder.id)
                : null,
       }));
-      const fileItems = sortFilesByCaptureDate(
-         visibleFiles.map((file) => ({
-            ...file,
-            kind: "file",
-            href: null,
-         })),
-      );
+      const fileItems = crossSpaceMode
+         ? visibleFiles.map((file) => ({
+              ...file,
+              kind: "file",
+              href: null,
+           }))
+         : sortFilesByCaptureDate(
+              visibleFiles.map((file) => ({
+                 ...file,
+                 kind: "file",
+                 href: null,
+              })),
+           );
 
       if (isGridLayout) {
          return fileItems;
       }
 
       return [...folderItems, ...fileItems];
-   }, [visibleFolders, visibleFiles, view, space, isGridLayout]);
+   }, [visibleFolders, visibleFiles, view, space, isGridLayout, crossSpaceMode]);
 
    const itemsSignature = useMemo(
       () => items.map((item) => itemSelectionKey(item)).join("|"),
@@ -678,7 +698,7 @@ export function DriveList({
       selectedKeys.has(itemSelectionKey(item)),
    );
    const hasSelection = selectedKeys.size > 0;
-   const canDrag = view === "browse";
+   const canDrag = view === "browse" || view === "orphans" || view === "recent";
 
    function getDragItems(item) {
       const key = itemSelectionKey(item);
@@ -699,9 +719,10 @@ export function DriveList({
       }
       event.stopPropagation();
       dnd.beginDrag(event, {
-         space: space || item.space,
+         space: item.space || space,
          items: getDragItems(item),
-         sourceFolderId: galleryMode || smartFolderMode ? null : folderId,
+         sourceFolderId:
+            galleryMode || smartFolderMode || crossSpaceMode ? null : folderId,
       });
    }
 
@@ -942,7 +963,13 @@ export function DriveList({
             </>
          ) : (
             <div className="overflow-hidden rounded-xl border border-white/10 bg-black/20">
-               <div className="grid grid-cols-[28px_minmax(0,1fr)_88px] gap-2 border-b border-white/10 px-3 py-2 text-xs text-muted-foreground sm:grid-cols-[28px_minmax(0,1fr)_100px_88px] md:grid-cols-[28px_minmax(0,1fr)_100px_150px_88px]">
+               <div
+                  className={cn(
+                     "grid grid-cols-[28px_minmax(0,1fr)_88px] gap-2 border-b border-white/10 px-3 py-2 text-xs text-muted-foreground sm:grid-cols-[28px_minmax(0,1fr)_100px_88px] md:grid-cols-[28px_minmax(0,1fr)_100px_150px_88px]",
+                     crossSpaceMode &&
+                        "sm:grid-cols-[28px_minmax(0,1fr)_88px_100px_88px] md:grid-cols-[28px_minmax(0,1fr)_88px_100px_150px_88px]"
+                  )}
+               >
                   <SelectionCheckbox
                      selected={
                         items.length > 0 && selectedKeys.size === items.length
@@ -955,6 +982,9 @@ export function DriveList({
                      className="size-4"
                   />
                   <span>Nom</span>
+                  {crossSpaceMode ? (
+                     <span className="hidden sm:block">Espace</span>
+                  ) : null}
                   <span className="hidden sm:block">Taille</span>
                   <span className="hidden md:block">Modifié</span>
                   <span className="text-right">Actions</span>
@@ -974,6 +1004,7 @@ export function DriveList({
                            pending={pending}
                            menuProps={menuProps}
                            space={space}
+                           showSpace={crossSpaceMode}
                            onItemDragStart={onItemDragStart}
                            handleItemActivate={handleItemActivate}
                            toggleItemSelection={toggleItemSelection}
@@ -983,6 +1014,13 @@ export function DriveList({
                      );
                   })}
                </ul>
+               {infiniteBrowse ? (
+                  <InfiniteScrollSentinel
+                     hasMore={galleryHasMore}
+                     loading={galleryLoading || gallerySearching}
+                     onVisible={loadMoreGallery}
+                  />
+               ) : null}
             </div>
          )}
       </div>

@@ -28,10 +28,16 @@ export {
 } from "@/actions/files";
 export { getDriveContents, emptyTrash } from "@/actions/drive";
 export {
+  listTagsOverview,
+  renameTag,
+  mergeTagsInSpace,
+} from "@/actions/tags";
+export {
   listSmartFolders,
   getSmartFolder,
   listActiveTags,
   createSmartFolder,
+  updateSmartFolder,
   deleteSmartFolder,
 } from "@/actions/smart-folders";
 export {

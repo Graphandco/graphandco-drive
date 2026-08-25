@@ -216,7 +216,7 @@ export function BulkActionBar({
                   </Button>
                ) : null}
 
-               {view === "browse" ? (
+               {view !== "trash" ? (
                   <>
                      <Button
                         type="button"
