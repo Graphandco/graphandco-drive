@@ -12,6 +12,7 @@ import {
    MoreHorizontal,
    Pencil,
    RotateCcw,
+   Share2,
    Trash2,
 } from "lucide-react";
 import { motion } from "motion/react";
@@ -48,6 +49,7 @@ import { ImageLightbox } from "@/components/drive/image-lightbox";
 import { ItemInfoDrawer } from "@/components/drive/item-info-drawer";
 import { InfiniteScrollSentinel } from "@/components/drive/infinite-scroll-sentinel";
 import { MasonryGrid } from "@/components/drive/masonry-grid";
+import { shareOrDownloadFile } from "@/lib/share-file";
 import { RenameDialog } from "@/components/drive/rename-dialog";
 import { useInfiniteFiles } from "@/hooks/use-infinite-files";
 import { Button } from "@/components/ui/button";
@@ -163,27 +165,54 @@ function ItemMenu({
             className="z-[100] w-52 border-0 shadow-xl"
          >
             {item.kind === "file" ? (
-               <DropdownMenuItem
-                  onClick={() =>
-                     run(async () => {
-                        const result = await getFileDownloadUrl(item.id);
-                        if (!result.success) {
-                           window.alert(
-                              result.error || "Téléchargement impossible.",
+               <>
+                  <DropdownMenuItem
+                     onClick={() =>
+                        run(async () => {
+                           try {
+                              const result = await shareOrDownloadFile({
+                                 fileId: item.id,
+                                 fileName: item.name,
+                                 mimeType: item.mime_type,
+                              });
+                              if (result.method === "download") {
+                                 toast.success(
+                                    "Partage indisponible — téléchargement lancé",
+                                 );
+                              }
+                           } catch (error) {
+                              toast.error(
+                                 error?.message || "Partage impossible.",
+                              );
+                           }
+                        })
+                     }
+                  >
+                     <Share2 />
+                     Partager
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                     onClick={() =>
+                        run(async () => {
+                           const result = await getFileDownloadUrl(item.id);
+                           if (!result.success) {
+                              window.alert(
+                                 result.error || "Téléchargement impossible.",
+                              );
+                              return;
+                           }
+                           window.open(
+                              result.data.url,
+                              "_blank",
+                              "noopener,noreferrer",
                            );
-                           return;
-                        }
-                        window.open(
-                           result.data.url,
-                           "_blank",
-                           "noopener,noreferrer",
-                        );
-                     })
-                  }
-               >
-                  <Download />
-                  Télécharger
-               </DropdownMenuItem>
+                        })
+                     }
+                  >
+                     <Download />
+                     Télécharger
+                  </DropdownMenuItem>
+               </>
             ) : null}
             <DropdownMenuItem onClick={() => onInfo?.(item)}>
                <Info />
@@ -319,30 +348,30 @@ function DriveGridItem({
             <div
                className={
                   compact
-                     ? "pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/85 via-black/55 to-transparent px-1 pt-4 pb-1 opacity-0 transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto"
-                     : "pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/80 via-black/50 to-transparent px-2.5 pt-8 pb-2.5 opacity-0 transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto"
+                     ? "pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/85 via-black/55 to-transparent px-1 pt-4 pb-1 opacity-0 transition-opacity group-hover:opacity-100"
+                     : "pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/80 via-black/50 to-transparent px-2.5 pt-6 pb-2 opacity-0 transition-opacity group-hover:opacity-100"
                }
             >
                <div className="flex items-end gap-1">
-                  <div className="min-w-0 flex-1 pointer-events-none">
+                  <div className="min-w-0 flex-1">
                      <p
                         className={
                            compact
-                              ? "truncate text-[10px] font-medium leading-tight text-white"
-                              : "truncate text-sm font-medium text-white"
+                              ? "truncate text-[9px] font-medium leading-tight text-white"
+                              : "truncate text-xs font-medium leading-tight text-white"
                         }
                      >
                         {item.name}
                      </p>
                      {!compact ? (
-                        <p className="truncate text-xs text-white/70">
+                        <p className="truncate text-[10px] text-white/70">
                            {formatBytes(item.size_bytes)}
                         </p>
                      ) : null}
                   </div>
                   <div
                      data-item-actions
-                     className="flex shrink-0 scale-90 origin-bottom-right pointer-events-auto items-center gap-0.5"
+                     className="pointer-events-auto flex shrink-0 scale-90 origin-bottom-right items-center gap-0.5"
                   >
                      <ItemInfoButton
                         onClick={() => openInfo(item)}
@@ -998,6 +1027,15 @@ export function DriveList({
             open={Boolean(lightbox)}
             src={lightbox?.src}
             title={lightbox?.title}
+            fileId={lightbox?.fileId}
+            mimeType={
+               lightbox?.fileId != null
+                  ? imageItems.find(
+                       (entry) =>
+                          String(entry.id) === String(lightbox.fileId),
+                    )?.mime_type
+                  : undefined
+            }
             onClose={() => setLightbox(null)}
             onPrev={() => navigateLightbox(-1)}
             onNext={() => navigateLightbox(1)}

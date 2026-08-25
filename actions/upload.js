@@ -88,7 +88,11 @@ export async function uploadFile(formData) {
 
     try {
       [capturedAt, { widthPx, heightPx }] = await Promise.all([
-        extractCapturedAt(buffer, { mimeType, name: file.name }),
+        extractCapturedAt(buffer, {
+          mimeType,
+          name: file.name,
+          fallbackDate: file.lastModified ? new Date(file.lastModified) : null,
+        }),
         extractImageDimensions(buffer, { mimeType, name: file.name }),
       ]);
     } catch (metaError) {

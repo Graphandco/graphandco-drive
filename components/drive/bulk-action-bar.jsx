@@ -8,6 +8,7 @@ import {
    Loader2,
    Minus,
    Plus,
+   Share2,
    Tags,
    Trash2,
    RotateCcw,
@@ -38,6 +39,7 @@ import {
    DialogHeader,
    DialogTitle,
 } from "@/components/ui/dialog";
+import { shareOrDownloadFile } from "@/lib/share-file";
 import { useBusyAction } from "@/hooks/use-busy-action";
 import { slideUpIn, springSnappy } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -209,6 +211,27 @@ export function BulkActionBar({
       });
    }
 
+   function onShare() {
+      if (fileCount !== 1) return;
+      const file = selectedItems.find((item) => item.kind === "file");
+      if (!file) return;
+
+      runBusy(async () => {
+         try {
+            const result = await shareOrDownloadFile({
+               fileId: file.id,
+               fileName: file.name,
+               mimeType: file.mime_type,
+            });
+            if (result.method === "download") {
+               toast.success("Partage indisponible — téléchargement lancé");
+            }
+         } catch (error) {
+            toast.error(error?.message || "Partage impossible.");
+         }
+      });
+   }
+
    function onMoveDone(result) {
       const total = result?.data?.total || 0;
       if (result?.error) {
@@ -297,6 +320,22 @@ export function BulkActionBar({
                         )}
                         Télécharger
                         {fileCount > 0 ? ` (${fileCount})` : ""}
+                     </Button>
+                     <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={pending || fileCount !== 1}
+                        className="border-white/25 bg-white/5 text-white hover:bg-white/10"
+                        onClick={onShare}
+                        title={
+                           fileCount !== 1
+                              ? "Sélectionnez un seul fichier pour partager"
+                              : "Partager via WhatsApp, Mail…"
+                        }
+                     >
+                        <Share2 className="size-4" />
+                        Partager
                      </Button>
                      <Button
                         type="button"

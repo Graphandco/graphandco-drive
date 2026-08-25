@@ -1,7 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Minus, Plus, ChevronLeft, ChevronRight, RotateCcw, X, ZoomIn } from "lucide-react";
+import {
+  Minus,
+  Plus,
+  ChevronLeft,
+  ChevronRight,
+  RotateCcw,
+  Share2,
+  X,
+  ZoomIn,
+} from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { shareOrDownloadFile } from "@/lib/share-file";
 import { cn } from "@/lib/utils";
 
 const MIN_ZOOM = 1;
@@ -22,6 +33,8 @@ export function ImageLightbox({
   open,
   src,
   title,
+  fileId,
+  mimeType,
   onClose,
   onPrev,
   onNext,
@@ -30,6 +43,7 @@ export function ImageLightbox({
 }) {
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [sharing, setSharing] = useState(false);
   const dragRef = useRef(null);
 
   const resetView = useCallback(() => {
@@ -66,6 +80,25 @@ export function ImageLightbox({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, resetView, hasPrev, hasNext, onPrev, onNext]);
+
+  async function onShare() {
+    if (fileId == null || sharing) return;
+    setSharing(true);
+    try {
+      const result = await shareOrDownloadFile({
+        fileId,
+        fileName: title,
+        mimeType,
+      });
+      if (result.method === "download") {
+        toast.success("Partage indisponible — téléchargement lancé");
+      }
+    } catch (error) {
+      toast.error(error?.message || "Partage impossible.");
+    } finally {
+      setSharing(false);
+    }
+  }
 
   function onWheel(event) {
     event.preventDefault();
@@ -124,6 +157,20 @@ export function ImageLightbox({
             </DialogDescription>
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            {fileId != null ? (
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                disabled={sharing}
+                className="text-white hover:bg-white/10 hover:text-white"
+                onClick={onShare}
+                aria-label="Partager"
+                title="Partager"
+              >
+                <Share2 />
+              </Button>
+            ) : null}
             <Button
               type="button"
               size="icon-sm"

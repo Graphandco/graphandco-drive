@@ -1,17 +1,19 @@
 services:
    app:
       platform: linux/amd64
-      container_name: graphandco-drive
+      container_name: graphandphotos
+      image: dockerhub.graphandco.com/graphandphotos:latest
       build:
          context: .
          dockerfile: Dockerfile
+         tags:
+            - dockerhub.graphandco.com/graphandphotos:1.0.0
+            - dockerhub.graphandco.com/graphandphotos:latest
       restart: unless-stopped
       env_file:
          - .env
       environment:
          NODE_ENV: production
-         HOSTNAME: 0.0.0.0
-         PORT: 3000
          DB_HOST: my-sql
          # Régis + 6-MyK : Unraid via .env (STORAGE_REGIS_* / STORAGE_6-MYK_*)
          # Public : SeaweedFS local VPS
