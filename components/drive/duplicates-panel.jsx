@@ -6,11 +6,14 @@ import { Loader2, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { keepDuplicateFile } from "@/actions";
+import { FileThumbnail } from "@/components/drive/file-thumbnail";
+import { ImageLightbox } from "@/components/drive/image-lightbox";
 import { InfiniteScrollSentinel } from "@/components/drive/infinite-scroll-sentinel";
 import { Button } from "@/components/ui/button";
 import { useInfiniteFiles } from "@/hooks/use-infinite-files";
 import { groupDuplicateFiles, spaceLabel } from "@/lib/duplicates";
 import { formatBytes, formatDate } from "@/lib/format";
+import { isImageFile } from "@/lib/mime";
 
 export function DuplicatesPanel({
   initialFiles = [],
@@ -19,6 +22,7 @@ export function DuplicatesPanel({
 }) {
   const router = useRouter();
   const [pendingId, setPendingId] = useState(null);
+  const [lightbox, setLightbox] = useState(null);
 
   const {
     files,
@@ -34,6 +38,14 @@ export function DuplicatesPanel({
   });
 
   const groups = useMemo(() => groupDuplicateFiles(files), [files]);
+
+  const lightboxImages = useMemo(
+    () =>
+      (lightbox?.groupItems || []).filter((file) =>
+        isImageFile({ mimeType: file.mime_type, name: file.name }),
+      ),
+    [lightbox?.groupItems],
+  );
 
   async function onKeepFile(keepId, groupItems) {
     if (pendingId) return;
@@ -62,6 +74,23 @@ export function DuplicatesPanel({
     } finally {
       setPendingId(null);
     }
+  }
+
+  function openLightbox(payload, groupItems) {
+    const images = groupItems.filter((file) =>
+      isImageFile({ mimeType: file.mime_type, name: file.name }),
+    );
+    const index = images.findIndex(
+      (file) => String(file.id) === String(payload.fileId),
+    );
+    if (index < 0) return;
+
+    setLightbox({
+      index,
+      fileId: payload.fileId,
+      src: payload.src || null,
+      groupItems: images,
+    });
   }
 
   return (
@@ -108,22 +137,44 @@ export function DuplicatesPanel({
                 <ul className="divide-y divide-white/5">
                   {group.items.map((file) => {
                     const pending = String(pendingId) === String(file.id);
+                    const isImage = isImageFile({
+                      mimeType: file.mime_type,
+                      name: file.name,
+                    });
+
                     return (
                       <li
                         key={file.id}
                         className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                       >
-                        <div className="min-w-0">
-                          <p className="text-xs text-muted-foreground">
-                            ID {file.id}
-                            <span className="mx-1.5 text-white/20">·</span>
-                            modifié {formatDate(file.updated_at)}
-                          </p>
-                          {file.tags ? (
-                            <p className="mt-1 truncate text-xs text-white/70">
-                              {file.tags}
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="relative size-16 shrink-0 overflow-hidden rounded-md border border-white/10 bg-black/40 sm:size-20">
+                            <FileThumbnail
+                              file={file}
+                              fit="cover"
+                              onOpen={
+                                isImage
+                                  ? (payload) =>
+                                      openLightbox(payload, group.items)
+                                  : undefined
+                              }
+                            />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm text-white/90">
+                              {file.name}
                             </p>
-                          ) : null}
+                            <p className="text-xs text-muted-foreground">
+                              ID {file.id}
+                              <span className="mx-1.5 text-white/20">·</span>
+                              modifié {formatDate(file.updated_at)}
+                            </p>
+                            {file.tags ? (
+                              <p className="mt-1 truncate text-xs text-white/70">
+                                {file.tags}
+                              </p>
+                            ) : null}
+                          </div>
                         </div>
 
                         <Button
@@ -156,6 +207,34 @@ export function DuplicatesPanel({
         hasMore={hasMore}
         loading={loading}
         onVisible={loadMore}
+      />
+
+      <ImageLightbox
+        open={Boolean(lightbox)}
+        index={lightbox?.index ?? 0}
+        images={lightboxImages}
+        seed={
+          lightbox?.src && lightbox?.fileId
+            ? { src: lightbox.src, fileId: lightbox.fileId }
+            : null
+        }
+        onClose={() => setLightbox(null)}
+        onIndexChange={(nextIndex) => {
+          const file = lightboxImages[nextIndex];
+          setLightbox((current) =>
+            current
+              ? {
+                  ...current,
+                  index: nextIndex,
+                  fileId: file?.id ?? current.fileId,
+                  src:
+                    file && String(file.id) === String(current.fileId)
+                      ? current.src
+                      : null,
+                }
+              : null,
+          );
+        }}
       />
     </div>
   );

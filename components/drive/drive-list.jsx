@@ -524,6 +524,7 @@ export function DriveList({
    favoritesMode = false,
    searchQuery = "",
    debouncedSearchQuery = "",
+   searchGlobal = false,
    onSearchMetaChange,
    filesPagination = null,
    crossSpaceMode = false,
@@ -565,6 +566,13 @@ export function DriveList({
    const browseFolderId =
       spaceWideMode || crossSpaceMode ? null : folderId;
 
+   const searchFolderId =
+      folderBrowseMode && debouncedSearchQuery.trim().length > 0
+         ? searchGlobal
+            ? null
+            : folderId
+         : browseFolderId;
+
    const {
       files: galleryFiles,
       hasMore: galleryHasMore,
@@ -575,7 +583,7 @@ export function DriveList({
       setFiles: setGalleryFiles,
    } = useInfiniteFiles({
       space,
-      folderId: browseFolderId,
+      folderId: searchFolderId,
       tag: smartFolderMode ? smartFolder?.tag : null,
       imagesOnly: smartFolderMode,
       search: debouncedSearchQuery,
@@ -604,10 +612,16 @@ export function DriveList({
 
    const visibleFolders = useMemo(
       () =>
-         favoritesOnly
+         favoritesOnly || (folderBrowseMode && debouncedSearchQuery.trim())
             ? []
             : filterDriveItems(folders, [], searchQuery).folders,
-      [folders, searchQuery, favoritesOnly],
+      [
+         folders,
+         searchQuery,
+         favoritesOnly,
+         folderBrowseMode,
+         debouncedSearchQuery,
+      ],
    );
 
    const visibleFiles = useMemo(() => {
@@ -767,12 +781,15 @@ export function DriveList({
       try {
          const result = await listSelectionTargets({
             space,
-            folderId: browseFolderId,
+            folderId: folderBrowseMode ? searchFolderId : browseFolderId,
             tag: smartFolderMode ? smartFolder?.tag : null,
             imagesOnly: smartFolderMode,
             search: debouncedSearchQuery,
             favoritesOnly,
-            includeFolders: folderBrowseMode && !isGridLayout,
+            includeFolders:
+               folderBrowseMode &&
+               !isGridLayout &&
+               !debouncedSearchQuery.trim(),
             view: crossSpaceMode ? view : "browse",
             recentDays,
          });
@@ -811,6 +828,7 @@ export function DriveList({
       debouncedSearchQuery,
       favoritesOnly,
       folderBrowseMode,
+      searchFolderId,
       isGridLayout,
       crossSpaceMode,
       view,
@@ -894,29 +912,11 @@ export function DriveList({
               )
             : -1;
       setLightbox({
-         ...payload,
          index: index >= 0 ? index : 0,
+         fileId,
+         src: payload.src || null,
+         title: payload.title || null,
       });
-   }
-
-   async function navigateLightbox(delta) {
-      if (!lightbox || lightbox.index == null) return;
-
-      const nextIndex = lightbox.index + delta;
-      const nextFile = imageItems[nextIndex];
-      if (!nextFile) return;
-
-      const result = await getFilePreviewUrl(nextFile.id);
-      if (result.success && result.data?.url) {
-         setLightbox({
-            src: result.data.url,
-            title: nextFile.name,
-            fileId: nextFile.id,
-            index: nextIndex,
-         });
-      } else {
-         toast.error(result.error || "Impossible d’ouvrir le fichier.");
-      }
    }
 
    function clearSelection() {
@@ -1215,26 +1215,37 @@ export function DriveList({
 
          <ImageLightbox
             open={Boolean(lightbox)}
-            src={lightbox?.src}
-            title={lightbox?.title}
-            fileId={lightbox?.fileId}
-            mimeType={
-               lightbox?.fileId != null
-                  ? imageItems.find(
-                       (entry) =>
-                          String(entry.id) === String(lightbox.fileId),
-                    )?.mime_type
-                  : undefined
+            index={lightbox?.index ?? 0}
+            images={imageItems}
+            seed={
+               lightbox?.src && lightbox?.fileId
+                  ? { src: lightbox.src, fileId: lightbox.fileId }
+                  : null
             }
             onClose={() => setLightbox(null)}
-            onPrev={() => navigateLightbox(-1)}
-            onNext={() => navigateLightbox(1)}
-            hasPrev={Boolean(lightbox && lightbox.index > 0)}
-            hasNext={Boolean(
-               lightbox &&
-                  lightbox.index != null &&
-                  lightbox.index < imageItems.length - 1,
-            )}
+            onIndexChange={(nextIndex) => {
+               const file = imageItems[nextIndex];
+               setLightbox((current) =>
+                  current
+                     ? {
+                          ...current,
+                          index: nextIndex,
+                          fileId: file?.id ?? current.fileId,
+                          title: file?.name ?? current.title,
+                          src:
+                             file &&
+                             String(file.id) === String(current.fileId)
+                                ? current.src
+                                : null,
+                       }
+                     : {
+                          index: nextIndex,
+                          fileId: file?.id,
+                          title: file?.name,
+                          src: null,
+                       },
+               );
+            }}
          />
 
          <ConfirmDialog

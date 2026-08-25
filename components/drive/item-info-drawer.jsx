@@ -235,6 +235,13 @@ export function ItemInfoDrawer({ open, onOpenChange, item, onSaved }) {
                 <InfoRow label="Taille">
                   {formatBytes(item.size_bytes)}
                 </InfoRow>
+                {isImage ? (
+                  <InfoRow label="Dimensions">
+                    {item.width_px && item.height_px
+                      ? `${item.width_px} × ${item.height_px} px`
+                      : "—"}
+                  </InfoRow>
+                ) : null}
               </>
             ) : null}
 

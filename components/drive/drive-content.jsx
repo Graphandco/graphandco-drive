@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 
 import { DrivePanel } from "@/components/drive/drive-panel";
-import { useDriveHeaderSearch } from "@/components/drive/drive-search-context";
+import {
+  useDriveSearch,
+  useDriveSearchMeta,
+} from "@/components/drive/drive-search-context";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import {
   Breadcrumb,
@@ -42,7 +45,7 @@ export function DriveContent({
 }) {
   const spaceConfig = getSpaceConfig(space);
   const folderId = folder?.id || spaceConfig.rootFolderId;
-  const [query, setQuery] = useState("");
+  const { query, globalSearch, showGlobalToggle } = useDriveSearch();
   const debouncedQuery = useDebouncedValue(query, 300);
   const [searchMeta, setSearchMeta] = useState({
     total: null,
@@ -57,23 +60,11 @@ export function DriveContent({
   const folderBrowseMode =
     view === "browse" && !galleryMode && !smartFolderMode && !favoritesMode;
 
-  const searchPlaceholder = folderBrowseMode
-    ? "Rechercher dans ce dossier…"
-    : galleryMode || smartFolderMode || favoritesMode
-      ? "Rechercher dans la galerie…"
-      : "Rechercher (nom, tags)…";
-
-  useDriveHeaderSearch({
-    enabled: folderBrowseMode,
-    query,
-    setQuery,
-    placeholder: searchPlaceholder,
-  });
-
-  useEffect(() => {
-    setQuery("");
-    setSearchMeta({ total: null, searching: false });
-  }, [folderId, view, space, smartFolder?.id, favoritesMode]);
+  const effectiveSearchGlobal = folderBrowseMode
+    ? showGlobalToggle
+      ? globalSearch
+      : true
+    : false;
 
   const filtered = useMemo(
     () => filterDriveItems(folders, files, query),
@@ -83,7 +74,8 @@ export function DriveContent({
   const showBreadcrumbs = view === "browse" && path.length > 0;
   const hasQuery = query.trim().length > 0;
   const showPageMeta =
-    crossSpaceMode || showBreadcrumbs || (folderBrowseMode && hasQuery);
+    crossSpaceMode || showBreadcrumbs || (folderBrowseMode && hasQuery) ||
+    ((galleryMode || smartFolderMode || favoritesMode) && hasQuery);
   const folderServerSearch =
     folderBrowseMode && debouncedQuery.trim().length > 0;
   const folderBrowseInfinite =
@@ -106,6 +98,12 @@ export function DriveContent({
     usesServerSearch && searchMeta.total != null
       ? searchMeta.total
       : filtered.folders.length + filtered.files.length;
+
+  useDriveSearchMeta({
+    resultCount: hasQuery && !isSearchPending ? resultCount : null,
+    searching: hasQuery && isSearchPending,
+    scopeLabel: folder?.name || "",
+  });
 
   return (
     <div className="flex flex-1 flex-col gap-4">
@@ -188,6 +186,7 @@ export function DriveContent({
         files={files}
         searchQuery={query}
         debouncedSearchQuery={debouncedQuery}
+        searchGlobal={effectiveSearchGlobal}
         onSearchMetaChange={setSearchMeta}
         view={view}
         space={space}

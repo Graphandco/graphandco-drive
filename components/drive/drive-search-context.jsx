@@ -1,149 +1,369 @@
 "use client";
 
 import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+   createContext,
+   useCallback,
+   useContext,
+   useEffect,
+   useMemo,
+   useRef,
+   useState,
 } from "react";
-import { Search, X } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Loader2, Search, X } from "lucide-react";
 
-import { Input } from "@/components/ui/input";
+import { useBucketMemory } from "@/components/bucket-memory";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Command, CommandInput } from "@/components/ui/command";
+import {
+   Popover,
+   PopoverContent,
+   PopoverTrigger,
+} from "@/components/ui/popover";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import {
+   buildBrowseSearchUrl,
+   readGlobalSearch,
+   readSearchQuery,
+   resolveDriveSearchContext,
+} from "@/lib/drive-search-nav";
 import { cn } from "@/lib/utils";
 
 const DriveSearchContext = createContext(null);
 
 export function DriveSearchProvider({ children }) {
-  const [registration, setRegistration] = useState(null);
+   const router = useRouter();
+   const pathname = usePathname();
+   const searchParams = useSearchParams();
+   const { rememberedSpace } = useBucketMemory();
 
-  const register = useCallback((next) => {
-    setRegistration(next);
-  }, []);
+   const browseContext = useMemo(
+      () => resolveDriveSearchContext(pathname, searchParams, rememberedSpace),
+      [pathname, searchParams, rememberedSpace],
+   );
 
-  const patch = useCallback((partial) => {
-    setRegistration((current) =>
-      current ? { ...current, ...partial } : current
-    );
-  }, []);
+   const urlQuery = browseContext.onBrowsePage
+      ? readSearchQuery(searchParams)
+      : "";
+   const globalFromUrl =
+      browseContext.showGlobalToggle && readGlobalSearch(searchParams);
 
-  const unregister = useCallback(() => {
-    setRegistration(null);
-  }, []);
+   const [draftQuery, setDraftQuery] = useState(urlQuery);
+   const [globalSearch, setGlobalSearchState] = useState(globalFromUrl);
+   const [meta, setMeta] = useState({
+      resultCount: null,
+      searching: false,
+      scopeLabel: "",
+   });
+   const prevUrlQuery = useRef(urlQuery);
+   const wasOnBrowsePage = useRef(browseContext.onBrowsePage);
+   const globalSearchRef = useRef(globalFromUrl);
+   globalSearchRef.current = globalSearch;
 
-  const value = useMemo(
-    () => ({ registration, register, patch, unregister }),
-    [registration, register, patch, unregister]
-  );
+   useEffect(() => {
+      if (wasOnBrowsePage.current && !browseContext.onBrowsePage) {
+         setDraftQuery("");
+      }
+      wasOnBrowsePage.current = browseContext.onBrowsePage;
+   }, [browseContext.onBrowsePage]);
 
-  return (
-    <DriveSearchContext.Provider value={value}>
-      {children}
-    </DriveSearchContext.Provider>
-  );
+   const browseNavKey = [
+      pathname,
+      searchParams.get("folder"),
+      searchParams.get("smart"),
+      searchParams.get("favorites"),
+   ].join("|");
+
+   useEffect(() => {
+      if (!browseContext.onBrowsePage) return;
+      const nextQuery = readSearchQuery(searchParams);
+      const nextGlobal = readGlobalSearch(searchParams);
+      prevUrlQuery.current = nextQuery;
+      setDraftQuery(nextQuery);
+      setGlobalSearchState(browseContext.showGlobalToggle ? nextGlobal : false);
+   }, [
+      browseContext.onBrowsePage,
+      browseContext.showGlobalToggle,
+      browseNavKey,
+      searchParams,
+   ]);
+
+   const debouncedQuery = useDebouncedValue(draftQuery, 300);
+
+   const updateBrowseUrl = useCallback(
+      (nextQuery, nextGlobalSearch) => {
+         if (!browseContext.onBrowsePage) return;
+         const href = buildBrowseSearchUrl(pathname, searchParams, {
+            q: nextQuery,
+            globalSearch: nextGlobalSearch,
+            showGlobalToggle: browseContext.showGlobalToggle,
+         });
+         router.replace(href, { scroll: false });
+      },
+      [
+         browseContext.onBrowsePage,
+         browseContext.showGlobalToggle,
+         pathname,
+         router,
+         searchParams,
+      ],
+   );
+
+   useEffect(() => {
+      const trimmed = debouncedQuery.trim();
+
+      if (browseContext.onBrowsePage) {
+         if (trimmed === urlQuery) return;
+         updateBrowseUrl(trimmed, globalSearchRef.current);
+         return;
+      }
+
+      if (!trimmed) return;
+
+      router.push(
+         `${browseContext.bucketBasePath}?q=${encodeURIComponent(trimmed)}`,
+      );
+   }, [
+      debouncedQuery,
+      browseContext.onBrowsePage,
+      browseContext.bucketBasePath,
+      urlQuery,
+      updateBrowseUrl,
+      router,
+   ]);
+
+   const setQuery = useCallback((value) => {
+      setDraftQuery(String(value ?? ""));
+   }, []);
+
+   const clearQuery = useCallback(() => {
+      setDraftQuery("");
+      setGlobalSearchState(false);
+      globalSearchRef.current = false;
+      prevUrlQuery.current = "";
+      if (browseContext.onBrowsePage) {
+         updateBrowseUrl("", false);
+      }
+   }, [browseContext.onBrowsePage, updateBrowseUrl]);
+
+   const setGlobalSearch = useCallback(
+      (value) => {
+         if (!browseContext.showGlobalToggle) return;
+         const nextGlobal = value === true;
+         setGlobalSearchState(nextGlobal);
+         globalSearchRef.current = nextGlobal;
+         updateBrowseUrl(draftQuery.trim(), nextGlobal);
+      },
+      [browseContext.showGlobalToggle, draftQuery, updateBrowseUrl],
+   );
+
+   const placeholder = browseContext.showGlobalToggle
+      ? globalSearch
+         ? "Rechercher dans tout l'espace…"
+         : "Rechercher dans ce dossier…"
+      : "Rechercher dans tout l'espace…";
+
+   const value = useMemo(
+      () => ({
+         query: draftQuery,
+         setQuery,
+         clearQuery,
+         globalSearch,
+         setGlobalSearch,
+         showGlobalToggle: browseContext.showGlobalToggle,
+         placeholder,
+         resultCount: meta.resultCount,
+         searching: meta.searching,
+         scopeLabel: meta.scopeLabel,
+         setMeta,
+         onBrowsePage: browseContext.onBrowsePage,
+      }),
+      [
+         draftQuery,
+         setQuery,
+         clearQuery,
+         globalSearch,
+         setGlobalSearch,
+         browseContext.showGlobalToggle,
+         browseContext.onBrowsePage,
+         placeholder,
+         meta.resultCount,
+         meta.searching,
+         meta.scopeLabel,
+      ],
+   );
+
+   return (
+      <DriveSearchContext.Provider value={value}>
+         {children}
+      </DriveSearchContext.Provider>
+   );
 }
 
-/** Enregistre la barre de recherche du header depuis une page Drive. */
-export function useDriveHeaderSearch({
-  enabled = true,
-  query,
-  setQuery,
-  placeholder = "Rechercher…",
+export function useDriveSearch() {
+   const ctx = useContext(DriveSearchContext);
+   if (!ctx) {
+      throw new Error("useDriveSearch must be used within DriveSearchProvider");
+   }
+   return ctx;
+}
+
+/** Met à jour le compteur et le libellé depuis une vue Drive. */
+export function useDriveSearchMeta({
+   resultCount = null,
+   searching = false,
+   scopeLabel = "",
 }) {
-  const ctx = useContext(DriveSearchContext);
-  const register = ctx?.register;
-  const patch = ctx?.patch;
-  const unregister = ctx?.unregister;
+   const { setMeta } = useDriveSearch();
 
-  const setQueryRef = useRef(setQuery);
-  setQueryRef.current = setQuery;
-
-  const stableSetQuery = useCallback((value) => {
-    setQueryRef.current(value);
-  }, []);
-
-  useEffect(() => {
-    if (!enabled || !register || !unregister) {
-      unregister?.();
-      return;
-    }
-
-    register({
-      query,
-      setQuery: stableSetQuery,
-      placeholder,
-    });
-
-    return () => unregister();
-    // Mount / enable only — query updates go through patch below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, register, unregister, stableSetQuery]);
-
-  useEffect(() => {
-    if (!enabled || !patch) return;
-    patch({ query, placeholder });
-  }, [enabled, query, placeholder, patch]);
+   useEffect(() => {
+      setMeta({ resultCount, searching, scopeLabel });
+   }, [resultCount, searching, scopeLabel, setMeta]);
 }
 
 export function DriveHeaderSearch() {
-  const ctx = useContext(DriveSearchContext);
-  const registration = ctx?.registration;
-  const inputRef = useRef(null);
+   const {
+      query,
+      setQuery,
+      clearQuery,
+      globalSearch,
+      setGlobalSearch,
+      showGlobalToggle,
+      placeholder,
+      resultCount,
+      searching,
+   } = useDriveSearch();
 
-  useEffect(() => {
-    if (!registration) return;
+   const [open, setOpen] = useState(false);
+   const hasQuery = query.trim().length > 0;
 
-    function onKeyDown(event) {
-      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "k") {
-        return;
+   useEffect(() => {
+      function onKeyDown(event) {
+         if (
+            !(event.metaKey || event.ctrlKey) ||
+            event.key.toLowerCase() !== "k"
+         ) {
+            return;
+         }
+
+         const tag = event.target?.tagName;
+         if (
+            tag === "INPUT" ||
+            tag === "TEXTAREA" ||
+            event.target?.isContentEditable
+         ) {
+            return;
+         }
+
+         event.preventDefault();
+         setOpen(true);
       }
 
-      const tag = event.target?.tagName;
-      if (
-        tag === "INPUT" ||
-        tag === "TEXTAREA" ||
-        event.target?.isContentEditable
-      ) {
-        return;
-      }
+      window.addEventListener("keydown", onKeyDown);
+      return () => window.removeEventListener("keydown", onKeyDown);
+   }, []);
 
-      event.preventDefault();
-      inputRef.current?.focus();
-    }
+   useEffect(() => {
+      if (!open) return;
+      const id = window.requestAnimationFrame(() => {
+         document.querySelector("[data-slot=command-input]")?.focus();
+      });
+      return () => window.cancelAnimationFrame(id);
+   }, [open]);
 
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [registration]);
+   return (
+      <Popover open={open} onOpenChange={setOpen}>
+         <PopoverTrigger asChild>
+            <Button
+               type="button"
+               variant="ghost"
+               size="icon-sm"
+               className={cn(
+                  "relative shrink-0 text-muted-foreground hover:text-foreground",
+                  open && "bg-sidebar-accent text-sidebar-accent-foreground",
+                  hasQuery && !open && "text-primary",
+               )}
+               aria-label="Rechercher"
+               title="Rechercher (⌘K)"
+            >
+               <Search className="size-4" />
+               {hasQuery ? (
+                  <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-primary" />
+               ) : null}
+            </Button>
+         </PopoverTrigger>
+         <PopoverContent
+            align="end"
+            side="bottom"
+            sideOffset={8}
+            className="w-[min(calc(100vw-2rem),20rem)] border-0 bg-bg-sidebar p-0 text-sidebar-foreground shadow-xl"
+            onOpenAutoFocus={(event) => event.preventDefault()}
+         >
+            <Command shouldFilter={false} className="rounded-lg bg-transparent">
+               <CommandInput
+                  value={query}
+                  onValueChange={setQuery}
+                  placeholder={placeholder}
+                  aria-label={placeholder}
+                  className="text-sidebar-foreground"
+               />
+            </Command>
+            <div className="space-y-2 px-3">
+               {showGlobalToggle ? (
+                  <label
+                     htmlFor="drive-search-global"
+                     className="flex cursor-pointer items-center gap-2.5 rounded-md px-1 py-1"
+                     onPointerDown={(event) => event.stopPropagation()}
+                  >
+                     <Checkbox
+                        id="drive-search-global"
+                        checked={globalSearch}
+                        onCheckedChange={(checked) =>
+                           setGlobalSearch(checked === true)
+                        }
+                     />
+                     <span className="text-xs font-normal leading-snug text-muted-foreground opacity-60">
+                        Recherche globale
+                     </span>
+                  </label>
+               ) : null}
 
-  if (!registration) return null;
-
-  const { query, setQuery, placeholder } = registration;
-  const hasQuery = String(query || "").trim().length > 0;
-
-  return (
-    <div className="relative mr-1 w-full max-w-[14rem] shrink-0 sm:max-w-[16rem] md:max-w-[18rem]">
-      <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-      <Input
-        ref={inputRef}
-        type="search"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        placeholder={placeholder}
-        aria-label={placeholder}
-        className={cn("h-8 pl-8 text-sm", hasQuery && "pr-8")}
-      />
-      {hasQuery ? (
-        <button
-          type="button"
-          onClick={() => setQuery("")}
-          aria-label="Effacer la recherche"
-          className="absolute top-1/2 right-2 -translate-y-1/2 rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
-        >
-          <X className="size-3.5" />
-        </button>
-      ) : null}
-    </div>
-  );
+               <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span className="inline-flex items-center gap-1.5">
+                     {hasQuery ? (
+                        searching ? (
+                           <>
+                              <Loader2 className="size-3 animate-spin" />
+                              Recherche…
+                           </>
+                        ) : resultCount != null ? (
+                           <>
+                              {resultCount} résultat
+                              {resultCount > 1 ? "s" : ""}
+                           </>
+                        ) : (
+                           "Recherche…"
+                        )
+                     ) : (
+                        ""
+                     )}
+                  </span>
+                  {hasQuery ? (
+                     <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        onClick={clearQuery}
+                        className="h-6 px-2 text-muted-foreground hover:text-foreground"
+                     >
+                        <X className="size-3" />
+                        Effacer
+                     </Button>
+                  ) : null}
+               </div>
+            </div>
+         </PopoverContent>
+      </Popover>
+   );
 }

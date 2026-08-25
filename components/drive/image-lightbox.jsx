@@ -1,285 +1,305 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Minus,
-  Plus,
-  ChevronLeft,
-  ChevronRight,
-  RotateCcw,
-  Share2,
-  X,
-  ZoomIn,
-} from "lucide-react";
-import { toast } from "sonner";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { X } from "lucide-react";
+import Lightbox from "yet-another-react-lightbox";
+import Zoom from "yet-another-react-lightbox/plugins/zoom";
+import "yet-another-react-lightbox/styles.css";
 
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { shareOrDownloadFile } from "@/lib/share-file";
+import { getFilePreviewUrl } from "@/actions";
+import { getCachedThumbnailUrl } from "@/lib/thumbnail-loader";
 import { cn } from "@/lib/utils";
 
-const MIN_ZOOM = 1;
-const MAX_ZOOM = 5;
-const ZOOM_STEP = 0.25;
+import "./image-lightbox.css";
 
-export function ImageLightbox({
-  open,
-  src,
-  title,
-  fileId,
-  mimeType,
-  onClose,
-  onPrev,
-  onNext,
-  hasPrev = false,
-  hasNext = false,
-}) {
-  const [zoom, setZoom] = useState(1);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const [sharing, setSharing] = useState(false);
-  const dragRef = useRef(null);
+const PLACEHOLDER_SRC =
+   "data:image/svg+xml," +
+   encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120"><rect width="100%" height="100%" fill="#0a0a0a"/></svg>`,
+   );
 
-  const resetView = useCallback(() => {
-    setZoom(MIN_ZOOM);
-    setOffset({ x: 0, y: 0 });
-  }, []);
+function thumbnailCacheKey(file) {
+   return `${file.id}:${file.thumbnail_key || file.storage_key || ""}`;
+}
 
-  useEffect(() => {
-    if (!open) return;
-    resetView();
-  }, [open, src, resetView]);
+function resolveFallbackSrc(file) {
+   if (!file?.id) return PLACEHOLDER_SRC;
+   return getCachedThumbnailUrl(thumbnailCacheKey(file)) || PLACEHOLDER_SRC;
+}
 
-  useEffect(() => {
-    if (!open) return;
+const LIGHTBOX_BACKDROP_Z = 9998;
 
-    function onKeyDown(event) {
-      if (event.key === "ArrowLeft" && hasPrev) {
-        event.preventDefault();
-        onPrev?.();
+function LightboxBackdrop({ open }) {
+   const [mounted, setMounted] = useState(false);
+   const [visible, setVisible] = useState(false);
+   const backdropRef = useRef(null);
+
+   useEffect(() => {
+      setMounted(true);
+   }, []);
+
+   useEffect(() => {
+      if (!open) {
+         setVisible(false);
+         return;
       }
-      if (event.key === "ArrowRight" && hasNext) {
-        event.preventDefault();
-        onNext?.();
-      }
-      if (event.key === "+" || event.key === "=") {
-        setZoom((value) => Math.min(MAX_ZOOM, value + ZOOM_STEP));
-      }
-      if (event.key === "-") {
-        setZoom((value) => Math.max(MIN_ZOOM, value - ZOOM_STEP));
-      }
-      if (event.key === "0") resetView();
-    }
 
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, resetView, hasPrev, hasNext, onPrev, onNext]);
-
-  async function onShare() {
-    if (fileId == null || sharing) return;
-    setSharing(true);
-    try {
-      const result = await shareOrDownloadFile({
-        fileId,
-        fileName: title,
-        mimeType,
+      setVisible(false);
+      const frame = requestAnimationFrame(() => {
+         setVisible(true);
       });
-      if (result.method === "download") {
-        toast.success("Partage indisponible — téléchargement lancé");
-      }
-    } catch (error) {
-      toast.error(error?.message || "Partage impossible.");
-    } finally {
-      setSharing(false);
-    }
-  }
+      return () => cancelAnimationFrame(frame);
+   }, [open]);
 
-  function onWheel(event) {
-    event.preventDefault();
-    const delta = event.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
-    setZoom((value) => {
-      const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value + delta));
-      if (next === MIN_ZOOM) setOffset({ x: 0, y: 0 });
-      return next;
-    });
-  }
+   useEffect(() => {
+      if (!open) return;
+      const node = backdropRef.current;
+      if (!node) return;
 
-  function onPointerDown(event) {
-    if (zoom <= MIN_ZOOM) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    dragRef.current = {
-      startX: event.clientX,
-      startY: event.clientY,
-      originX: offset.x,
-      originY: offset.y,
-    };
-  }
+      const keepBackdropActive = () => {
+         node.removeAttribute("inert");
+         node.removeAttribute("aria-hidden");
+      };
 
-  function onPointerMove(event) {
-    if (!dragRef.current) return;
-    const dx = event.clientX - dragRef.current.startX;
-    const dy = event.clientY - dragRef.current.startY;
-    setOffset({
-      x: dragRef.current.originX + dx,
-      y: dragRef.current.originY + dy,
-    });
-  }
+      keepBackdropActive();
+      const observer = new MutationObserver(keepBackdropActive);
+      observer.observe(node, { attributes: true, attributeFilter: ["inert", "aria-hidden"] });
+      return () => observer.disconnect();
+   }, [open]);
 
-  function onPointerUp() {
-    dragRef.current = null;
-  }
+   if (!mounted || !open) return null;
 
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) onClose?.();
-      }}
-    >
-      <DialogContent
-        showCloseButton={false}
-        overlayClassName="bg-black/85"
-        className="flex h-[min(92vh,900px)] w-[min(96vw,1100px)] max-w-none flex-col gap-0 overflow-hidden border-white/10 bg-[#14110e] p-0 text-white sm:max-w-none"
+   return createPortal(
+      <div
+         ref={backdropRef}
+         aria-hidden
+         className={cn(
+            "graphand-lightbox-backdrop",
+            visible && "graphand-lightbox-backdrop--open",
+         )}
+      />,
+      document.body,
+   );
+}
+
+function LightboxCloseButton({ onClose }) {
+   return (
+      <button
+         type="button"
+         onClick={onClose}
+         aria-label="Fermer"
+         className={cn(
+            "graphand-lightbox__close-zone group flex size-32 cursor-pointer items-center justify-center",
+            "border-0 bg-transparent p-0 outline-none",
+            "rounded-full focus-visible:ring-2 focus-visible:ring-white/25",
+            "max-sm:size-36",
+         )}
       >
-        <DialogHeader className="flex-row items-center justify-between gap-3 space-y-0 border-b border-white/10 px-4 py-3 text-left">
-          <div className="min-w-0 flex-1">
-            <DialogTitle className="truncate text-sm font-medium text-white">
-              {title || "Aperçu"}
-            </DialogTitle>
-            <DialogDescription className="text-xs text-white/60">
-              {Math.round(zoom * 100)}% — flèches pour naviguer, +/− pour zoomer
-            </DialogDescription>
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-            {fileId != null ? (
-              <Button
-                type="button"
-                size="icon-sm"
-                variant="ghost"
-                disabled={sharing}
-                className="text-white hover:bg-white/10 hover:text-white"
-                onClick={onShare}
-                aria-label="Partager"
-                title="Partager"
-              >
-                <Share2 />
-              </Button>
-            ) : null}
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="ghost"
-              className="text-white hover:bg-white/10 hover:text-white"
-              onClick={() =>
-                setZoom((value) => Math.max(MIN_ZOOM, value - ZOOM_STEP))
-              }
-              aria-label="Zoom arrière"
-            >
-              <Minus />
-            </Button>
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="ghost"
-              className="text-white hover:bg-white/10 hover:text-white"
-              onClick={() =>
-                setZoom((value) => Math.min(MAX_ZOOM, value + ZOOM_STEP))
-              }
-              aria-label="Zoom avant"
-            >
-              <Plus />
-            </Button>
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="ghost"
-              className="text-white hover:bg-white/10 hover:text-white"
-              onClick={resetView}
-              aria-label="Réinitialiser le zoom"
-            >
-              <RotateCcw />
-            </Button>
-            <DialogClose asChild>
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                className="ml-2 size-14 rounded-md text-white hover:bg-white/10 hover:text-white [&_svg]:size-10"
-                aria-label="Fermer"
-              >
-                <X strokeWidth={2.25} />
-              </Button>
-            </DialogClose>
-          </div>
-        </DialogHeader>
+         <span
+            aria-hidden
+            className={cn(
+               "flex size-12 items-center justify-center rounded-full",
+               "text-white/90 transition-colors duration-150",
+               "group-hover:bg-red-950 group-hover:text-white",
+               "max-sm:size-14",
+            )}
+         >
+            <X className="size-4 shrink-0" strokeWidth={2.25} />
+         </span>
+      </button>
+   );
+}
 
-        <div
-          className={cn(
-            "relative flex min-h-0 flex-1 items-center justify-center overflow-hidden",
-            zoom > 1 ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
-          )}
-          onWheel={onWheel}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
-          onDoubleClick={() => {
-            if (zoom > 1) resetView();
-            else setZoom(2);
-          }}
-        >
-          {hasPrev ? (
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              onClick={onPrev}
-              aria-label="Image précédente"
-              className="absolute left-3 top-1/2 z-20 size-14 -translate-y-1/2 rounded-full border border-white/20 bg-black/55 text-white shadow-lg backdrop-blur-sm hover:bg-black/75 hover:text-white [&_svg]:size-9"
-            >
-              <ChevronLeft strokeWidth={2.5} />
-            </Button>
-          ) : null}
+/**
+ * Lightbox 90 % viewport : image centrée, swipe, zoom pinch/double-tap.
+ */
+export function ImageLightbox({
+   open,
+   index = 0,
+   images = [],
+   seed = null,
+   onClose,
+   onIndexChange,
+}) {
+   const [urls, setUrls] = useState(() => new Map());
+   const urlsRef = useRef(urls);
+   const fetchingRef = useRef(new Set());
+   const indexRef = useRef(index);
 
-          {hasNext ? (
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              onClick={onNext}
-              aria-label="Image suivante"
-              className="absolute right-3 top-1/2 z-20 size-14 -translate-y-1/2 rounded-full border border-white/20 bg-black/55 text-white shadow-lg backdrop-blur-sm hover:bg-black/75 hover:text-white [&_svg]:size-9"
-            >
-              <ChevronRight strokeWidth={2.5} />
-            </Button>
-          ) : null}
+   useEffect(() => {
+      urlsRef.current = urls;
+   }, [urls]);
 
-          {src ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={src}
-              alt={title || "Aperçu"}
-              draggable={false}
-              className="max-h-full max-w-full select-none object-contain transition-transform duration-75"
-              style={{
-                transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
-              }}
-            />
-          ) : null}
-          {zoom === 1 ? (
-            <div className="pointer-events-none absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/50 px-3 py-1.5 text-xs text-white/80">
-              <ZoomIn className="size-3.5" />
-              Molette ou double-clic pour zoomer
-            </div>
-          ) : null}
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
+   useEffect(() => {
+      indexRef.current = index;
+   }, [index]);
+
+   const setUrl = useCallback((fileId, src) => {
+      if (!fileId || !src) return;
+      const key = String(fileId);
+      setUrls((current) => {
+         if (current.get(key) === src) return current;
+         const next = new Map(current);
+         next.set(key, src);
+         return next;
+      });
+   }, []);
+
+   useEffect(() => {
+      if (!open || !seed?.fileId || !seed?.src) return;
+      setUrl(seed.fileId, seed.src);
+   }, [open, seed?.fileId, seed?.src, setUrl]);
+
+   const ensurePreview = useCallback(
+      async (file) => {
+         if (!file?.id) return;
+         const key = String(file.id);
+         if (urlsRef.current.has(key)) return;
+         if (fetchingRef.current.has(key)) return;
+
+         fetchingRef.current.add(key);
+         try {
+            const result = await getFilePreviewUrl(file.id);
+            if (result?.success && result.data?.url) {
+               setUrl(file.id, result.data.url);
+            }
+         } finally {
+            fetchingRef.current.delete(key);
+         }
+      },
+      [setUrl],
+   );
+
+   useEffect(() => {
+      if (!open || !images.length) return;
+
+      const targets = [];
+      for (let offset = -1; offset <= 2; offset += 1) {
+         const i = index + offset;
+         if (i >= 0 && i < images.length) targets.push(images[i]);
+      }
+
+      for (const file of targets) {
+         ensurePreview(file);
+      }
+   }, [open, index, images, ensurePreview]);
+
+   useEffect(() => {
+      if (open) return;
+      fetchingRef.current.clear();
+   }, [open]);
+
+   const slides = useMemo(
+      () =>
+         images.map((file) => {
+            const key = String(file.id);
+            const src = urls.get(key) || resolveFallbackSrc(file);
+            return {
+               src,
+               alt: file.name || "Photo",
+               width: file.width_px || undefined,
+               height: file.height_px || undefined,
+            };
+         }),
+      [images, urls],
+   );
+
+   const safeIndex = Math.min(
+      Math.max(0, index),
+      Math.max(0, slides.length - 1),
+   );
+
+   const handleOverlayClick = useCallback(
+      (event) => {
+         const target = event.target;
+         if (!(target instanceof HTMLElement)) return;
+         if (target.closest(".yarl__container")) return;
+         onClose?.();
+      },
+      [onClose],
+   );
+
+   const isOpen = open && slides.length > 0;
+
+   return (
+      <>
+      <LightboxBackdrop open={isOpen} />
+      <Lightbox
+         open={isOpen}
+         close={onClose}
+         index={safeIndex}
+         slides={slides}
+         plugins={[Zoom]}
+         carousel={{
+            finite: true,
+            preload: 2,
+            padding: "0px",
+            spacing: "16px",
+            imageFit: "contain",
+         }}
+         animation={{
+            fade: 220,
+            swipe: 380,
+            easing: {
+               fade: "ease",
+               swipe: "cubic-bezier(0.22, 1, 0.36, 1)",
+               navigation: "cubic-bezier(0.22, 1, 0.36, 1)",
+            },
+         }}
+         controller={{
+            closeOnBackdropClick: false,
+            closeOnPullDown: true,
+            closeOnEscape: true,
+         }}
+         portal={{
+            container: {
+               onClick: handleOverlayClick,
+            },
+         }}
+         zoom={{
+            maxZoomPixelRatio: 4,
+            scrollToZoom: true,
+            doubleClickMaxStops: 2,
+         }}
+         toolbar={{
+            buttons: ["close"],
+         }}
+         render={{
+            buttonClose: () => <LightboxCloseButton onClose={onClose} />,
+            buttonZoom: () => null,
+            buttonPrev: slides.length <= 1 ? () => null : undefined,
+            buttonNext: slides.length <= 1 ? () => null : undefined,
+            iconLoading: () => (
+               <span
+                  className={cn(
+                     "inline-block size-8 animate-spin rounded-full",
+                     "border-2 border-white/25 border-t-white",
+                  )}
+                  aria-hidden
+               />
+            ),
+         }}
+         labels={{
+            Close: "Fermer",
+            Next: "Suivante",
+            Previous: "Précédente",
+            ZoomIn: "Zoom avant",
+            ZoomOut: "Zoom arrière",
+         }}
+         className="graphand-lightbox"
+         styles={{
+            root: { zIndex: LIGHTBOX_BACKDROP_Z + 1 },
+         }}
+         on={{
+            view: ({ index: nextIndex }) => {
+               if (nextIndex === indexRef.current) return;
+               onIndexChange?.(nextIndex);
+               const file = images[nextIndex];
+               if (file) ensurePreview(file);
+            },
+         }}
+      />
+      </>
+   );
 }

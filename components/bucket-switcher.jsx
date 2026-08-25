@@ -39,8 +39,8 @@ export function BucketSwitcher({ buckets = [] }) {
               size="lg"
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                {ActiveIcon ? <ActiveIcon className="size-4" /> : null}
+              <div className="flex aspect-square size-7 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
+                {ActiveIcon ? <ActiveIcon className="size-3.5" /> : null}
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">{active.name}</span>
@@ -48,7 +48,7 @@ export function BucketSwitcher({ buckets = [] }) {
                   {active.description || "Bucket"}
                 </span>
               </div>
-              <ChevronsUpDown className="ml-auto" />
+              <ChevronsUpDown className="ml-auto size-4" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent

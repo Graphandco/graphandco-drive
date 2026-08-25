@@ -23,6 +23,7 @@ export function DrivePanel({
   favoritesMode = false,
   searchQuery = "",
   debouncedSearchQuery = "",
+  searchGlobal = false,
   onSearchMetaChange,
   filesPagination = null,
   crossSpaceMode = false,
@@ -90,6 +91,7 @@ export function DrivePanel({
         favoritesMode={favoritesMode}
         searchQuery={searchQuery}
         debouncedSearchQuery={debouncedSearchQuery}
+        searchGlobal={searchGlobal}
         onSearchMetaChange={onSearchMetaChange}
         filesPagination={filesPagination}
         crossSpaceMode={crossSpaceMode}
