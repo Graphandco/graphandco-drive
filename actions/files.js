@@ -22,7 +22,7 @@ function revalidateDrive(spaceKey = "sixmyk") {
   revalidatePath("/", "layout");
 }
 
-const FILE_COLUMNS = `f.id, f.space, f.name, f.mime_type, f.size_bytes, f.storage_location, f.storage_key, f.thumbnail_key, f.tags, f.captured_at, f.width_px, f.height_px, f.deleted_at, f.created_at, f.updated_at`;
+const FILE_COLUMNS = `f.id, f.space, f.name, f.mime_type, f.size_bytes, f.storage_location, f.storage_key, f.thumbnail_key, f.tags, f.is_favorite, f.captured_at, f.width_px, f.height_px, f.deleted_at, f.created_at, f.updated_at`;
 
 const FILE_ORDER_BROWSE = `ORDER BY f.captured_at DESC, f.created_at DESC, f.name ASC`;
 
@@ -52,7 +52,7 @@ function paginationClause(limit, offset) {
 export async function getFile(fileId) {
   try {
     const rows = await query(
-      `SELECT id, folder_id, space, name, mime_type, size_bytes, storage_location, storage_key, thumbnail_key, tags, captured_at, width_px, height_px, deleted_at, created_at, updated_at
+      `SELECT id, folder_id, space, name, mime_type, size_bytes, storage_location, storage_key, thumbnail_key, tags, is_favorite, captured_at, width_px, height_px, deleted_at, created_at, updated_at
        FROM files
        WHERE id = ?
        LIMIT 1`,
@@ -120,10 +120,12 @@ async function countBrowseFiles({
   tag = null,
   imagesOnly = false,
   search = null,
+  favoritesOnly = false,
 }) {
   const tagFilter = tagFilterClause(tag);
   const searchFilter = searchFilterClause(search);
   const imageFilter = imagesOnly ? "AND f.mime_type LIKE 'image/%'" : "";
+  const favoriteFilter = favoritesOnly ? "AND f.is_favorite = 1" : "";
 
   if (folderId != null) {
     const rows = await query(
@@ -133,6 +135,7 @@ async function countBrowseFiles({
        WHERE ff.folder_id = ?
          AND f.deleted_at IS NULL
          ${imageFilter}
+         ${favoriteFilter}
          ${tagFilter.sql}
          ${searchFilter.sql}`,
       [Number(folderId), ...tagFilter.params, ...searchFilter.params]
@@ -149,6 +152,7 @@ async function countBrowseFiles({
      WHERE f.space = ?
        AND f.deleted_at IS NULL
        ${imageFilter}
+       ${favoriteFilter}
        ${tagFilter.sql}
        ${searchFilter.sql}`,
     [space, ...tagFilter.params, ...searchFilter.params]
@@ -214,6 +218,7 @@ export async function listFilesPaginated({
   search = null,
   view = "browse",
   recentDays = null,
+  favoritesOnly = false,
   limit = FILES_PAGE_SIZE,
   offset = 0,
 } = {}) {
@@ -227,6 +232,7 @@ export async function listFilesPaginated({
     const tagFilter = tagFilterClause(normalizedTag);
     const searchFilter = searchFilterClause(normalizedSearch);
     const imageFilter = imagesOnly ? "AND f.mime_type LIKE 'image/%'" : "";
+    const favoriteFilter = favoritesOnly ? "AND f.is_favorite = 1" : "";
     const useSpaceBrowse = normalizedTag || folderId == null;
 
     if (view === "recent") {
@@ -384,7 +390,7 @@ export async function listFilesPaginated({
 
     if (view === "trash") {
       const rows = await query(
-        `SELECT id, folder_id, space, name, mime_type, size_bytes, storage_location, storage_key, thumbnail_key, tags, captured_at, width_px, height_px, deleted_at, created_at, updated_at
+        `SELECT id, folder_id, space, name, mime_type, size_bytes, storage_location, storage_key, thumbnail_key, tags, is_favorite, captured_at, width_px, height_px, deleted_at, created_at, updated_at
          FROM files
          WHERE deleted_at IS NOT NULL
          ORDER BY deleted_at DESC
@@ -413,6 +419,7 @@ export async function listFilesPaginated({
          WHERE f.space = ?
            AND f.deleted_at IS NULL
            ${imageFilter}
+           ${favoriteFilter}
            ${tagFilter.sql}
            ${searchFilter.sql}
          ${FILE_ORDER_BROWSE}
@@ -425,6 +432,7 @@ export async function listFilesPaginated({
         tag: normalizedTag || null,
         imagesOnly,
         search: normalizedSearch || null,
+        favoritesOnly,
       });
       const total = stats.fileCount;
       return {
@@ -446,6 +454,7 @@ export async function listFilesPaginated({
        WHERE ff.folder_id = ?
          AND f.deleted_at IS NULL
          ${imageFilter}
+         ${favoriteFilter}
          ${searchFilter.sql}
        ${FILE_ORDER_BROWSE}
        ${pageSql}`,
@@ -456,6 +465,7 @@ export async function listFilesPaginated({
       folderId,
       imagesOnly,
       search: normalizedSearch || null,
+      favoritesOnly,
     });
     const total = stats.fileCount;
     return {
@@ -595,6 +605,42 @@ export async function createFileRecord({
 
 export async function renameFile({ id, name }) {
   return updateFileMetadata({ id, name });
+}
+
+export async function toggleFileFavorite(fileId) {
+  if (!fileId) {
+    return { success: false, error: "Identifiant requis." };
+  }
+
+  try {
+    const existing = await getFile(fileId);
+    if (!existing.success) return existing;
+    if (existing.data.deleted_at) {
+      return { success: false, error: "Fichier dans la corbeille." };
+    }
+
+    const next = existing.data.is_favorite ? 0 : 1;
+    await query(`UPDATE files SET is_favorite = ? WHERE id = ?`, [
+      next,
+      Number(fileId),
+    ]);
+
+    revalidateDrive(existing.data.space);
+
+    return {
+      success: true,
+      data: {
+        id: Number(fileId),
+        is_favorite: Boolean(next),
+      },
+    };
+  } catch (error) {
+    console.error("toggleFileFavorite:", error);
+    return {
+      success: false,
+      error: error?.message || "Impossible de mettre à jour le favori.",
+    };
+  }
 }
 
 export async function updateFileMetadata({ id, name, tags, captured_at }) {

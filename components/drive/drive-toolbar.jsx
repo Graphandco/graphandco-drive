@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FolderPlus, Loader2, Trash2, Upload } from "lucide-react";
+import { FolderPlus, Heart, Loader2, Trash2, Upload } from "lucide-react";
 
 import { createFolder, emptyTrash, trashFolder } from "@/actions";
 import { BusyOverlay } from "@/components/drive/busy-overlay";
@@ -16,6 +16,7 @@ import {
 } from "@/lib/upload-drop";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 export function DriveToolbar({
   folderId,
@@ -25,6 +26,8 @@ export function DriveToolbar({
   view,
   layout = "list",
   onLayoutChange,
+  favoritesOnly = false,
+  onFavoritesOnlyChange,
   smartFolderMode = false,
   trashCount = 0,
 }) {
@@ -37,6 +40,38 @@ export function DriveToolbar({
   const [status, setStatus] = useState("");
   const [confirm, setConfirm] = useState(null);
   const spaceConfig = getSpaceConfig(space);
+
+  function LayoutControls() {
+    if (typeof onLayoutChange !== "function") return null;
+    return (
+      <div className="flex items-center gap-2">
+        {typeof onFavoritesOnlyChange === "function" ? (
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="outline"
+            aria-label={
+              favoritesOnly ? "Afficher tous les fichiers" : "Filtrer les favoris"
+            }
+            aria-pressed={favoritesOnly}
+            title={favoritesOnly ? "Tous les fichiers" : "Favoris uniquement"}
+            onClick={() => onFavoritesOnlyChange(!favoritesOnly)}
+            className={cn(
+              "border-white/15 bg-black/20",
+              favoritesOnly &&
+                "border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/15 hover:text-red-300",
+            )}
+          >
+            <Heart
+              className="size-4"
+              fill={favoritesOnly ? "currentColor" : "none"}
+            />
+          </Button>
+        ) : null}
+        <DriveViewToggle layout={layout} onChange={onLayoutChange} />
+      </div>
+    );
+  }
 
   function runConfirm(action) {
     runBusy(async () => {
@@ -74,9 +109,7 @@ export function DriveToolbar({
             {pending ? <Loader2 className="animate-spin" /> : <Trash2 />}
             Vider la corbeille
           </Button>
-          {typeof onLayoutChange === "function" ? (
-            <DriveViewToggle layout={layout} onChange={onLayoutChange} />
-          ) : null}
+          {LayoutControls()}
         </div>
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
@@ -110,10 +143,9 @@ export function DriveToolbar({
   }
 
   if (view !== "browse") {
-    if (typeof onLayoutChange !== "function") return null;
     return (
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <DriveViewToggle layout={layout} onChange={onLayoutChange} />
+        {LayoutControls()}
       </div>
     );
   }
@@ -121,9 +153,7 @@ export function DriveToolbar({
   if (smartFolderMode) {
     return (
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {typeof onLayoutChange === "function" ? (
-          <DriveViewToggle layout={layout} onChange={onLayoutChange} />
-        ) : null}
+        {LayoutControls()}
       </div>
     );
   }
@@ -247,9 +277,7 @@ export function DriveToolbar({
             </Button>
           ) : null}
         </div>
-        {typeof onLayoutChange === "function" ? (
-          <DriveViewToggle layout={layout} onChange={onLayoutChange} />
-        ) : null}
+        {LayoutControls()}
         <input
           ref={fileInputRef}
           type="file"

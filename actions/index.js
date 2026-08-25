@@ -18,6 +18,7 @@ export {
   listFilesPaginated,
   createFileRecord,
   renameFile,
+  toggleFileFavorite,
   updateFileMetadata,
   trashFile,
   restoreFile,

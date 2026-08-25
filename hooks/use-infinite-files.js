@@ -6,7 +6,7 @@ import { listFilesPaginated } from "@/actions";
 import { FILES_PAGE_SIZE } from "@/lib/drive";
 
 /**
- * Charge les fichiers page par page (galerie, smart folder, recherche).
+ * Charge les fichiers page par page (galerie, smart folder, recherche, favoris).
  */
 export function useInfiniteFiles({
   space,
@@ -16,13 +16,16 @@ export function useInfiniteFiles({
   search = "",
   view = "browse",
   recentDays = null,
+  favoritesOnly = false,
   initialFiles = [],
   initialPagination = null,
   enabled = false,
 }) {
   const [files, setFiles] = useState(initialFiles);
   const [hasMore, setHasMore] = useState(initialPagination?.hasMore ?? false);
-  const [total, setTotal] = useState(initialPagination?.total ?? initialFiles.length);
+  const [total, setTotal] = useState(
+    initialPagination?.total ?? initialFiles.length
+  );
   const [loading, setLoading] = useState(false);
   const [searching, setSearching] = useState(false);
   const loadingRef = useRef(false);
@@ -31,9 +34,10 @@ export function useInfiniteFiles({
 
   const normalizedSearch = String(search || "").trim();
   const hasSearch = Boolean(normalizedSearch);
+  const needsServerFetch = hasSearch || favoritesOnly;
 
   useEffect(() => {
-    if (!enabled || hasSearch) return;
+    if (!enabled || needsServerFetch) return;
 
     setFiles(initialFiles);
     setHasMore(initialPagination?.hasMore ?? false);
@@ -41,7 +45,7 @@ export function useInfiniteFiles({
     offsetRef.current = initialFiles.length;
   }, [
     enabled,
-    hasSearch,
+    needsServerFetch,
     initialFiles,
     initialPagination,
     space,
@@ -50,14 +54,15 @@ export function useInfiniteFiles({
     imagesOnly,
     view,
     recentDays,
+    favoritesOnly,
   ]);
 
   useEffect(() => {
-    if (!enabled || !hasSearch) return;
+    if (!enabled || !needsServerFetch) return;
 
     let cancelled = false;
 
-    async function fetchSearchPage() {
+    async function fetchFilteredPage() {
       loadingRef.current = true;
       setSearching(true);
       setFiles([]);
@@ -70,9 +75,10 @@ export function useInfiniteFiles({
           folderId: tag ? null : folderId,
           tag: tag || null,
           imagesOnly,
-          search: normalizedSearch,
+          search: hasSearch ? normalizedSearch : null,
           view,
           recentDays,
+          favoritesOnly,
           limit: pageLimit,
           offset: 0,
         });
@@ -99,13 +105,14 @@ export function useInfiniteFiles({
       }
     }
 
-    fetchSearchPage();
+    fetchFilteredPage();
 
     return () => {
       cancelled = true;
     };
   }, [
     enabled,
+    needsServerFetch,
     hasSearch,
     normalizedSearch,
     space,
@@ -115,6 +122,7 @@ export function useInfiniteFiles({
     pageLimit,
     view,
     recentDays,
+    favoritesOnly,
   ]);
 
   const loadMore = useCallback(async () => {
@@ -132,6 +140,7 @@ export function useInfiniteFiles({
         search: hasSearch ? normalizedSearch : null,
         view,
         recentDays,
+        favoritesOnly,
         limit: pageLimit,
         offset: offsetRef.current,
       });
@@ -169,6 +178,7 @@ export function useInfiniteFiles({
     pageLimit,
     view,
     recentDays,
+    favoritesOnly,
   ]);
 
   return {

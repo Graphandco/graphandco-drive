@@ -44,11 +44,13 @@ import {
    useFolderDropTarget,
 } from "@/components/drive/drive-dnd-provider";
 import { FolderDropBadge } from "@/components/drive/folder-drop-badge";
+import { FavoriteButton } from "@/components/drive/favorite-button";
 import { FileThumbnail } from "@/components/drive/file-thumbnail";
 import { ImageLightbox } from "@/components/drive/image-lightbox";
 import { ItemInfoDrawer } from "@/components/drive/item-info-drawer";
 import { InfiniteScrollSentinel } from "@/components/drive/infinite-scroll-sentinel";
 import { MasonryGrid } from "@/components/drive/masonry-grid";
+import { ScrollToTopButton } from "@/components/drive/scroll-to-top-button";
 import { shareOrDownloadFile } from "@/lib/share-file";
 import { RenameDialog } from "@/components/drive/rename-dialog";
 import { useInfiniteFiles } from "@/hooks/use-infinite-files";
@@ -277,7 +279,10 @@ function DriveGridItem({
    toggleItemSelection,
    openInfo,
    openLightbox,
+   onFavoriteChanged,
 }) {
+   const isFile = item.kind === "file";
+
    return (
       <motion.li
          layout={false}
@@ -321,21 +326,15 @@ function DriveGridItem({
                handleItemActivate(event, item, index);
             }}
          >
-            <div
-               className={cn(
-                  "absolute top-1.5 right-1.5 z-20 transition-opacity",
-                  selected || hasSelection
-                     ? "opacity-100"
-                     : "opacity-0 group-hover:opacity-100",
-               )}
-            >
-               <SelectionCheckbox
-                  selected={selected}
-                  onChange={(_, event) =>
-                     toggleItemSelection(item, index, event)
-                  }
-               />
-            </div>
+            {isFile ? (
+               <div className="absolute top-1.5 right-1.5 z-20">
+                  <FavoriteButton
+                     file={item}
+                     compact={compact}
+                     onChanged={onFavoriteChanged}
+                  />
+               </div>
+            ) : null}
 
             <div className="h-full w-full">
                <FileThumbnail
@@ -346,11 +345,14 @@ function DriveGridItem({
             </div>
 
             <div
-               className={
+               className={cn(
                   compact
-                     ? "pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/85 via-black/55 to-transparent px-1 pt-4 pb-1 opacity-0 transition-opacity group-hover:opacity-100"
-                     : "pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/80 via-black/50 to-transparent px-2.5 pt-6 pb-2 opacity-0 transition-opacity group-hover:opacity-100"
-               }
+                     ? "pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/85 via-black/55 to-transparent px-1 pt-4 pb-1 transition-opacity"
+                     : "pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/80 via-black/50 to-transparent px-2.5 pt-6 pb-2 transition-opacity",
+                  selected || hasSelection
+                     ? "opacity-100"
+                     : "opacity-0 group-hover:opacity-100",
+               )}
             >
                <div className="flex items-end gap-1">
                   <div className="min-w-0 flex-1">
@@ -379,6 +381,12 @@ function DriveGridItem({
                         compact={compact}
                      />
                      <ItemMenu item={item} {...menuProps} />
+                     <SelectionCheckbox
+                        selected={selected}
+                        onChange={(_, event) =>
+                           toggleItemSelection(item, index, event)
+                        }
+                     />
                   </div>
                </div>
             </div>
@@ -518,6 +526,7 @@ export function DriveList({
    filesPagination = null,
    crossSpaceMode = false,
    recentDays = null,
+   favoritesOnly = false,
 }) {
    const router = useRouter();
    const dnd = useDriveDndOptional();
@@ -541,7 +550,8 @@ export function DriveList({
       folderBrowseMode;
 
    const serverSearchActive =
-      folderBrowseMode && debouncedSearchQuery.trim().length > 0;
+      (folderBrowseMode || galleryMode || smartFolderMode) &&
+      (debouncedSearchQuery.trim().length > 0 || favoritesOnly);
 
    const browseFolderId =
       galleryMode || smartFolderMode || crossSpaceMode ? null : folderId;
@@ -553,6 +563,7 @@ export function DriveList({
       loading: galleryLoading,
       searching: gallerySearching,
       loadMore: loadMoreGallery,
+      setFiles: setGalleryFiles,
    } = useInfiniteFiles({
       space,
       folderId: browseFolderId,
@@ -561,6 +572,7 @@ export function DriveList({
       search: debouncedSearchQuery,
       view: crossSpaceMode ? view : "browse",
       recentDays,
+      favoritesOnly,
       initialFiles: files,
       initialPagination: filesPagination,
       enabled: infiniteBrowse,
@@ -582,8 +594,11 @@ export function DriveList({
    const displayFiles = infiniteBrowse ? galleryFiles : files;
 
    const visibleFolders = useMemo(
-      () => filterDriveItems(folders, [], searchQuery).folders,
-      [folders, searchQuery],
+      () =>
+         favoritesOnly
+            ? []
+            : filterDriveItems(folders, [], searchQuery).folders,
+      [folders, searchQuery, favoritesOnly],
    );
 
    const visibleFiles = useMemo(() => {
@@ -642,6 +657,22 @@ export function DriveList({
          cancelled = true;
       };
    }, [openFileId, visibleFiles, imageItems]);
+
+   function onFavoriteChanged(fileId, isFavorite) {
+      setGalleryFiles((current) => {
+         const next = current.map((file) =>
+            String(file.id) === String(fileId)
+               ? { ...file, is_favorite: isFavorite ? 1 : 0 }
+               : file,
+         );
+         if (favoritesOnly && !isFavorite) {
+            return next.filter(
+               (file) => String(file.id) !== String(fileId),
+            );
+         }
+         return next;
+      });
+   }
 
    const isGridLayout = layout === "grid" || layout === "compact";
 
@@ -1092,7 +1123,9 @@ export function DriveList({
          {!items.length ? (
             <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-white/10 px-6 py-16 text-sm text-muted-foreground">
                {serverSearchActive && !gallerySearching
-                  ? "Aucun résultat pour cette recherche"
+                  ? favoritesOnly
+                     ? "Aucun favori"
+                     : "Aucun résultat pour cette recherche"
                   : isGridLayout && folders.length > 0
                     ? "Aucun fichier"
                     : "Aucun élément"}
@@ -1121,6 +1154,7 @@ export function DriveList({
                         toggleItemSelection={toggleItemSelection}
                         openInfo={openInfo}
                         openLightbox={openLightbox}
+                        onFavoriteChanged={onFavoriteChanged}
                      />
                   )}
                </MasonryGrid>
@@ -1194,6 +1228,7 @@ export function DriveList({
                ) : null}
             </div>
          )}
+         <ScrollToTopButton />
       </div>
    );
 }

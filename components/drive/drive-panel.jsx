@@ -28,6 +28,7 @@ export function DrivePanel({
   recentDays = null,
 }) {
   const [layout, setLayout] = useState("grid");
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
 
   useEffect(() => {
     const stored = window.localStorage.getItem(LAYOUT_KEY);
@@ -35,6 +36,10 @@ export function DrivePanel({
       setLayout(stored);
     }
   }, []);
+
+  useEffect(() => {
+    setFavoritesOnly(false);
+  }, [folderId, space, view, smartFolderMode, galleryMode]);
 
   function onLayoutChange(next) {
     setLayout(next);
@@ -51,6 +56,8 @@ export function DrivePanel({
         view={view}
         layout={layout}
         onLayoutChange={onLayoutChange}
+        favoritesOnly={favoritesOnly}
+        onFavoritesOnlyChange={setFavoritesOnly}
         smartFolderMode={smartFolderMode}
         trashCount={
           typeof trashCount === "number"
@@ -75,6 +82,7 @@ export function DrivePanel({
         filesPagination={filesPagination}
         crossSpaceMode={crossSpaceMode}
         recentDays={recentDays}
+        favoritesOnly={favoritesOnly}
       />
     </>
   );
