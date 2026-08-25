@@ -15,22 +15,38 @@ function readBool(value, fallback = false) {
 }
 
 function getLocationConfig(location) {
-  const prefix = location === "public" ? "PUBLIC" : "SIXMYK";
+  const prefix =
+    location === "public" ? "PUBLIC" : location === "regis" ? "REGIS" : "6-MYK";
   const endpoint =
     process.env[`STORAGE_${prefix}_ENDPOINT`] ||
+    (location === "sixmyk" ? process.env.STORAGE_SIXMYK_ENDPOINT : null) ||
     process.env.STORAGE_ENDPOINT ||
     "https://s3.graphandco.com";
 
   return {
     location,
-    key: process.env[`STORAGE_${prefix}_KEY`],
-    secret: process.env[`STORAGE_${prefix}_SECRET`],
-    bucket: process.env[`STORAGE_${prefix}_BUCKET`] || location,
-    region: process.env[`STORAGE_${prefix}_REGION`] || "us-east-1",
+    key:
+      process.env[`STORAGE_${prefix}_KEY`] ||
+      (location === "sixmyk" ? process.env.STORAGE_SIXMYK_KEY : null),
+    secret:
+      process.env[`STORAGE_${prefix}_SECRET`] ||
+      (location === "sixmyk" ? process.env.STORAGE_SIXMYK_SECRET : null),
+    bucket:
+      process.env[`STORAGE_${prefix}_BUCKET`] ||
+      (location === "sixmyk" ? process.env.STORAGE_SIXMYK_BUCKET : null) ||
+      location,
+    region:
+      process.env[`STORAGE_${prefix}_REGION`] ||
+      (location === "sixmyk" ? process.env.STORAGE_SIXMYK_REGION : null) ||
+      "us-east-1",
     endpoint,
     forcePathStyle: readBool(
       process.env[`STORAGE_${prefix}_FORCE_PATH_STYLE`] ??
-        process.env[`STORAGE_${prefix}_PATH_STYLE`],
+        process.env[`STORAGE_${prefix}_PATH_STYLE`] ??
+        (location === "sixmyk"
+          ? process.env.STORAGE_SIXMYK_FORCE_PATH_STYLE ??
+            process.env.STORAGE_SIXMYK_PATH_STYLE
+          : null),
       true
     ),
   };

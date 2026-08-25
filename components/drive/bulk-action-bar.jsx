@@ -4,7 +4,10 @@ import { useState } from "react";
 import {
    Check,
    Download,
+   FolderInput,
    Loader2,
+   Minus,
+   Plus,
    Tags,
    Trash2,
    RotateCcw,
@@ -17,10 +20,13 @@ import { toast } from "sonner";
 import {
    bulkAddFileTags,
    bulkDeletePermanentItems,
+   bulkRemoveFileTags,
    bulkRestoreItems,
    bulkTrashItems,
    getFileDownloadUrl,
 } from "@/actions";
+import { BulkMoveDialog } from "@/components/drive/bulk-move-dialog";
+import { TagInput } from "@/components/drive/tag-input";
 import { BusyOverlay } from "@/components/drive/busy-overlay";
 import { ConfirmDialog } from "@/components/drive/confirm-dialog";
 import { Button } from "@/components/ui/button";
@@ -32,7 +38,6 @@ import {
    DialogHeader,
    DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { useBusyAction } from "@/hooks/use-busy-action";
 import { slideUpIn, springSnappy } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -86,13 +91,16 @@ export function BulkActionBar({
    view = "browse",
    selectedItems = [],
    allCount = 0,
+   sourceFolderId = null,
    onClear,
    onSelectAll,
    onDone,
 }) {
    const { isBusy: pending, runBusy } = useBusyAction();
    const [tagsOpen, setTagsOpen] = useState(false);
+   const [tagsMode, setTagsMode] = useState("add");
    const [tagsDraft, setTagsDraft] = useState("");
+   const [moveOpen, setMoveOpen] = useState(false);
    const [confirm, setConfirm] = useState(null);
 
    const count = selectedItems.length;
@@ -103,6 +111,11 @@ export function BulkActionBar({
       .filter((item) => item.kind === "folder")
       .map((item) => item.id);
    const fileCount = fileIds.length;
+   const hasMovableItems = fileCount > 0 || folderIds.length > 0;
+   const tagSpace =
+      selectedItems.find((item) => item.kind === "file")?.space ||
+      selectedItems[0]?.space ||
+      null;
 
    const busyLabel =
       confirm?.type === "delete-forever"
@@ -133,12 +146,22 @@ export function BulkActionBar({
       });
    }
 
-   function onAddTags() {
-      run(() => bulkAddFileTags({ ids: fileIds, tags: tagsDraft }), {
+   function onApplyTags() {
+      if (tagsMode === "add") {
+         run(() => bulkAddFileTags({ ids: fileIds, tags: tagsDraft }), {
+            successMessage:
+               fileCount === 1
+                  ? "Tags ajoutés au fichier"
+                  : `Tags ajoutés à ${fileCount} fichiers`,
+         });
+         return;
+      }
+
+      run(() => bulkRemoveFileTags({ ids: fileIds, tags: tagsDraft }), {
          successMessage:
             fileCount === 1
-               ? "Tags ajoutés au fichier"
-               : `Tags ajoutés à ${fileCount} fichiers`,
+               ? "Tags retirés du fichier"
+               : `Tags retirés de ${fileCount} fichiers`,
       });
    }
 
@@ -186,6 +209,26 @@ export function BulkActionBar({
       });
    }
 
+   function onMoveDone(result) {
+      const total = result?.data?.total || 0;
+      if (result?.error) {
+         toast.warning(
+            total
+               ? `${total} élément${total > 1 ? "s" : ""} déplacé${total > 1 ? "s" : ""}`
+               : "Déplacement partiel",
+            { description: result.error }
+         );
+      } else {
+         toast.success(
+            total === 1
+               ? "Élément déplacé"
+               : `${total} éléments déplacés`
+         );
+      }
+      onClear();
+      onDone?.();
+   }
+
    return (
       <>
          <BusyOverlay show={pending && Boolean(confirm)} label={busyLabel} />
@@ -222,6 +265,22 @@ export function BulkActionBar({
                         type="button"
                         size="sm"
                         variant="outline"
+                        disabled={pending || !hasMovableItems}
+                        className="border-white/25 bg-white/5 text-white hover:bg-white/10"
+                        onClick={() => setMoveOpen(true)}
+                        title={
+                           !hasMovableItems
+                              ? "Sélectionnez au moins un élément"
+                              : undefined
+                        }
+                     >
+                        <FolderInput className="size-4" />
+                        Déplacer vers dossier…
+                     </Button>
+                     <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
                         disabled={pending || fileCount === 0}
                         className="border-white/25 bg-white/5 text-white hover:bg-white/10"
                         onClick={onDownload}
@@ -245,7 +304,10 @@ export function BulkActionBar({
                         variant="outline"
                         disabled={pending || fileCount === 0}
                         className="border-white/25 bg-white/5 text-white hover:bg-white/10"
-                        onClick={() => setTagsOpen(true)}
+                        onClick={() => {
+                           setTagsMode("add");
+                           setTagsOpen(true);
+                        }}
                         title={
                            fileCount === 0
                               ? "Sélectionnez au moins un fichier"
@@ -337,38 +399,79 @@ export function BulkActionBar({
             ) : null}
          </AnimatePresence>
 
+         <BulkMoveDialog
+            open={moveOpen}
+            onOpenChange={setMoveOpen}
+            selectedItems={selectedItems}
+            sourceFolderId={sourceFolderId}
+            pending={pending}
+            onMove={onMoveDone}
+         />
+
          <Dialog
             open={tagsOpen}
             onOpenChange={(open) => {
                if (!pending) {
                   setTagsOpen(open);
-                  if (!open) setTagsDraft("");
+                  if (!open) {
+                     setTagsDraft("");
+                     setTagsMode("add");
+                  }
                }
             }}
          >
             <DialogContent className="border-white/10 bg-[#161310] text-white sm:max-w-md">
                <DialogHeader>
-                  <DialogTitle>Ajouter des tags</DialogTitle>
+                  <DialogTitle>Tags</DialogTitle>
                   <DialogDescription className="text-white/60">
-                     Les tags seront ajoutés à {fileCount} fichier
-                     {fileCount > 1 ? "s" : ""} (fusionnés avec les tags
-                     existants).
+                     {fileCount} fichier{fileCount > 1 ? "s" : ""} sélectionné
+                     {fileCount > 1 ? "s" : ""}.
                      {folderIds.length > 0
                         ? " Les dossiers sélectionnés sont ignorés."
                         : ""}
                   </DialogDescription>
                </DialogHeader>
-               <Input
+
+               <div className="flex gap-1 rounded-lg border border-white/10 p-1">
+                  <Button
+                     type="button"
+                     size="sm"
+                     variant={tagsMode === "add" ? "secondary" : "ghost"}
+                     className="flex-1"
+                     onClick={() => setTagsMode("add")}
+                  >
+                     <Plus className="size-3.5" />
+                     Ajouter
+                  </Button>
+                  <Button
+                     type="button"
+                     size="sm"
+                     variant={tagsMode === "remove" ? "secondary" : "ghost"}
+                     className="flex-1"
+                     onClick={() => setTagsMode("remove")}
+                  >
+                     <Minus className="size-3.5" />
+                     Retirer
+                  </Button>
+               </div>
+
+               <TagInput
+                  space={tagSpace}
                   value={tagsDraft}
                   disabled={pending}
-                  placeholder="ex. vacances, 2024, famille"
+                  placeholder={
+                     tagsMode === "add"
+                        ? "ex. vacances, 2024, famille"
+                        : "ex. brouillon, temporaire"
+                  }
                   className="border-white/15 bg-black/30 text-white"
                   onChange={(event) => setTagsDraft(event.target.value)}
                   onKeyDown={(event) => {
-                     if (event.key === "Enter") onAddTags();
+                     if (event.key === "Enter") onApplyTags();
                   }}
                   autoFocus
                />
+
                <DialogFooter>
                   <Button
                      type="button"
@@ -382,10 +485,10 @@ export function BulkActionBar({
                   <Button
                      type="button"
                      disabled={pending || !tagsDraft.trim()}
-                     onClick={onAddTags}
+                     onClick={onApplyTags}
                   >
                      {pending ? <Loader2 className="animate-spin" /> : null}
-                     Ajouter
+                     {tagsMode === "add" ? "Ajouter" : "Retirer"}
                   </Button>
                </DialogFooter>
             </DialogContent>

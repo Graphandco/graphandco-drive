@@ -114,7 +114,7 @@ export function FileThumbnail({
     try {
       const result = await getFilePreviewUrl(file.id);
       if (result.success && result.data?.url) {
-        onOpen({ src: result.data.url, title: file.name });
+        onOpen({ src: result.data.url, title: file.name, fileId: file.id });
       } else {
         toast.error(result.error || "Impossible d’ouvrir le fichier.");
       }

@@ -15,6 +15,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
+import { TagInput } from "@/components/drive/tag-input";
 import { isImageFile } from "@/lib/mime";
 import { formatBytes, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -29,7 +30,7 @@ function toDatetimeLocalValue(value) {
 
 function spaceLabel(space) {
   if (space === "public") return "Public";
-  if (space === "sixmyk") return "Six-MyK";
+  if (space === "sixmyk") return "6-MyK";
   if (space === "regis") return "Régis";
   return space || "—";
 }
@@ -51,10 +52,12 @@ function EditableField({
   pending,
   inputType = "text",
   placeholder,
+  tagSpace = null,
   onSave,
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(editValue ?? value ?? "");
+  const FieldInput = tagSpace ? TagInput : Input;
 
   useEffect(() => {
     if (!editing) {
@@ -73,8 +76,9 @@ function EditableField({
     <InfoRow label={label}>
       {editing ? (
         <div className="flex flex-col gap-2">
-          <Input
-            type={inputType}
+          <FieldInput
+            type={tagSpace ? "text" : inputType}
+            space={tagSpace || undefined}
             value={draft}
             placeholder={placeholder}
             disabled={pending}
@@ -212,6 +216,7 @@ export function ItemInfoDrawer({ open, onOpenChange, item, onSaved }) {
                   value={item.tags || ""}
                   pending={pending}
                   placeholder="vacances, famille, 2024"
+                  tagSpace={item.space}
                   onSave={(next) => save({ tags: next })}
                 />
                 <EditableField

@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 
 import { query } from "@/lib/db";
 import { getSpaceConfig } from "@/lib/drive";
-import { parseTags } from "@/lib/tags";
+import { formatTags, parseTags } from "@/lib/tags";
+
+const MAX_SMART_FOLDER_TAG_LENGTH = 100;
 
 function revalidateSpace(spaceKey) {
   const space = getSpaceConfig(spaceKey);
@@ -102,17 +104,27 @@ export async function listActiveTags({ space = "regis" } = {}) {
   }
 }
 
-export async function createSmartFolder({ space, tag, name = null }) {
-  const normalizedTag = String(tag || "").trim();
-  if (!normalizedTag) {
-    return { success: false, error: "Tag requis." };
+export async function createSmartFolder({ space, tag, tags, name = null }) {
+  const tagList = parseTags(tags ?? tag);
+  if (!tagList.length) {
+    return { success: false, error: "Au moins un tag requis." };
   }
 
   if (!getSpaceConfig(space)) {
     return { success: false, error: "Espace invalide." };
   }
 
-  const displayName = String(name || normalizedTag).trim() || normalizedTag;
+  const normalizedTag = formatTags(tagList);
+  if (!normalizedTag || normalizedTag.length > MAX_SMART_FOLDER_TAG_LENGTH) {
+    return {
+      success: false,
+      error: `La combinaison de tags ne doit pas dépasser ${MAX_SMART_FOLDER_TAG_LENGTH} caractères.`,
+    };
+  }
+
+  const displayName =
+    String(name || "").trim() ||
+    (tagList.length > 1 ? tagList.join(" + ") : tagList[0]);
 
   try {
     const existing = await query(
@@ -123,7 +135,7 @@ export async function createSmartFolder({ space, tag, name = null }) {
     if (existing.length) {
       return {
         success: false,
-        error: "Un dossier intelligent existe déjà pour ce tag.",
+        error: "Un dossier intelligent existe déjà pour cette combinaison de tags.",
         data: existing[0],
       };
     }
@@ -186,13 +198,24 @@ export async function updateSmartFolder({ id, name, tag }) {
       name !== undefined
         ? String(name || "").trim() || existing.data.name
         : existing.data.name;
-    const nextTag =
-      tag !== undefined
-        ? String(tag || "").trim() || existing.data.tag
-        : existing.data.tag;
+
+    let nextTag = existing.data.tag;
+    if (tag !== undefined) {
+      const tagList = parseTags(tag);
+      if (!tagList.length) {
+        return { success: false, error: "Au moins un tag requis." };
+      }
+      nextTag = formatTags(tagList);
+      if (!nextTag || nextTag.length > MAX_SMART_FOLDER_TAG_LENGTH) {
+        return {
+          success: false,
+          error: `La combinaison de tags ne doit pas dépasser ${MAX_SMART_FOLDER_TAG_LENGTH} caractères.`,
+        };
+      }
+    }
 
     if (!nextName || !nextTag) {
-      return { success: false, error: "Nom et tag requis." };
+      return { success: false, error: "Nom et tags requis." };
     }
 
     if (nextTag.toLowerCase() !== existing.data.tag.toLowerCase()) {
@@ -208,7 +231,7 @@ export async function updateSmartFolder({ id, name, tag }) {
       if (duplicate.length) {
         return {
           success: false,
-          error: "Un dossier intelligent existe déjà pour ce tag.",
+          error: "Un dossier intelligent existe déjà pour cette combinaison de tags.",
         };
       }
     }

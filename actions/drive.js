@@ -82,6 +82,58 @@ export async function getDriveContents({
     };
   }
 
+  if (view === "untagged") {
+    const filesResult = await listFilesPaginated({
+      view: "untagged",
+      limit: FILES_PAGE_SIZE,
+      offset: 0,
+    });
+
+    return {
+      success: true,
+      folder: null,
+      path: [],
+      folders: [],
+      files: filesResult.data || [],
+      stats: filesResult.stats || {
+        fileCount: filesResult.pagination?.total || 0,
+        totalBytes: 0,
+      },
+      galleryMode: false,
+      smartFolderMode: false,
+      smartFolder: null,
+      filesPagination: filesResult.pagination || null,
+      recentDays: null,
+      error: filesResult.error || null,
+    };
+  }
+
+  if (view === "duplicates") {
+    const filesResult = await listFilesPaginated({
+      view: "duplicates",
+      limit: FILES_PAGE_SIZE,
+      offset: 0,
+    });
+
+    return {
+      success: true,
+      folder: null,
+      path: [],
+      folders: [],
+      files: filesResult.data || [],
+      stats: filesResult.stats || {
+        fileCount: filesResult.pagination?.total || 0,
+        totalBytes: 0,
+      },
+      galleryMode: false,
+      smartFolderMode: false,
+      smartFolder: null,
+      filesPagination: filesResult.pagination || null,
+      recentDays: null,
+      error: filesResult.error || null,
+    };
+  }
+
   if (view === "browse" && smartFolderId) {
     const smartResult = await getSmartFolder(smartFolderId);
 
@@ -205,7 +257,7 @@ export async function getDriveContents({
           space,
           folderId: galleryMode ? null : resolvedFolderId,
           view,
-          limit: galleryMode ? FILES_PAGE_SIZE : 10000,
+          limit: FILES_PAGE_SIZE,
           offset: 0,
         }),
         galleryMode
@@ -300,6 +352,8 @@ export async function emptyTrash() {
     revalidatePath("/trash");
     revalidatePath("/recent");
     revalidatePath("/orphans");
+    revalidatePath("/untagged");
+    revalidatePath("/duplicates");
     revalidatePath("/sixmyk");
     revalidatePath("/regis");
     revalidatePath("/public");

@@ -19,6 +19,7 @@ function revalidateAll() {
   revalidatePath("/tags");
   revalidatePath("/recent");
   revalidatePath("/orphans");
+  revalidatePath("/untagged");
   revalidatePath("/", "layout");
 }
 

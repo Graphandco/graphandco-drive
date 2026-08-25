@@ -9,13 +9,15 @@ import {
 
 const titles = {
   "/": "Drive",
-  "/sixmyk": "Six-MyK",
+  "/sixmyk": "6-MyK",
   "/regis": "Régis",
   "/public": "Public",
   "/trash": "Corbeille",
   "/tags": "Tags",
   "/recent": "Fichiers récents",
   "/orphans": "Sans dossier",
+  "/untagged": "Sans tags",
+  "/duplicates": "Doublons",
   "/settings": "Paramètres",
 };
 

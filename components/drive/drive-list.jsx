@@ -29,6 +29,7 @@ import {
    restoreFolder,
    trashFile,
    trashFolder,
+   bulkTrashItems,
 } from "@/actions";
 import {
    BulkActionBar,
@@ -60,6 +61,7 @@ import {
 import { folderHref, getSpaceConfig, sortFilesByCaptureDate } from "@/lib/drive";
 import { filterDriveItems } from "@/lib/drive-search";
 import { formatBytes, formatDate } from "@/lib/format";
+import { isImageFile } from "@/lib/mime";
 import { listItemDelay, listItemIn, listItemTransition } from "@/lib/motion";
 import { itemSelectionKey } from "@/lib/tags";
 import { cn } from "@/lib/utils";
@@ -498,13 +500,22 @@ export function DriveList({
    const [selectedKeys, setSelectedKeys] = useState(() => new Set());
    const [selectionAnchor, setSelectionAnchor] = useState(null);
 
+   const folderBrowseMode =
+      view === "browse" && !galleryMode && !smartFolderMode && !crossSpaceMode;
+
    const infiniteBrowse =
       view === "recent" ||
       view === "orphans" ||
-      (view === "browse" && (galleryMode || smartFolderMode));
+      view === "untagged" ||
+      view === "duplicates" ||
+      (view === "browse" && (galleryMode || smartFolderMode)) ||
+      folderBrowseMode;
 
    const serverSearchActive =
-      infiniteBrowse && debouncedSearchQuery.trim().length > 0;
+      folderBrowseMode && debouncedSearchQuery.trim().length > 0;
+
+   const browseFolderId =
+      galleryMode || smartFolderMode || crossSpaceMode ? null : folderId;
 
    const {
       files: galleryFiles,
@@ -515,7 +526,7 @@ export function DriveList({
       loadMore: loadMoreGallery,
    } = useInfiniteFiles({
       space,
-      folderId: null,
+      folderId: browseFolderId,
       tag: smartFolderMode ? smartFolder?.tag : null,
       imagesOnly: smartFolderMode,
       search: debouncedSearchQuery,
@@ -547,10 +558,31 @@ export function DriveList({
    );
 
    const visibleFiles = useMemo(() => {
-      if (serverSearchActive) return galleryFiles;
+      if (serverSearchActive) {
+         if (gallerySearching) {
+            return filterDriveItems([], files, debouncedSearchQuery).files;
+         }
+         return galleryFiles;
+      }
       if (!searchQuery.trim()) return displayFiles;
       return filterDriveItems([], displayFiles, searchQuery).files;
-   }, [serverSearchActive, galleryFiles, displayFiles, searchQuery]);
+   }, [
+      serverSearchActive,
+      gallerySearching,
+      galleryFiles,
+      displayFiles,
+      searchQuery,
+      debouncedSearchQuery,
+      files,
+   ]);
+
+   const imageItems = useMemo(
+      () =>
+         visibleFiles.filter((file) =>
+            isImageFile({ mimeType: file.mime_type, name: file.name }),
+         ),
+      [visibleFiles],
+   );
 
    useEffect(() => {
       if (!openFileId) return;
@@ -563,7 +595,15 @@ export function DriveList({
       getFilePreviewUrl(file.id).then((result) => {
          if (cancelled) return;
          if (result.success && result.data?.url) {
-            setLightbox({ src: result.data.url, title: file.name });
+            const index = imageItems.findIndex(
+               (entry) => String(entry.id) === String(file.id),
+            );
+            setLightbox({
+               src: result.data.url,
+               title: file.name,
+               fileId: file.id,
+               index: index >= 0 ? index : 0,
+            });
          } else {
             toast.error(result.error || "Impossible d’ouvrir le fichier.");
          }
@@ -572,7 +612,7 @@ export function DriveList({
       return () => {
          cancelled = true;
       };
-   }, [openFileId, visibleFiles]);
+   }, [openFileId, visibleFiles, imageItems]);
 
    const isGridLayout = layout === "grid" || layout === "compact";
 
@@ -624,17 +664,36 @@ export function DriveList({
             return;
          }
 
+         const tag = event.target?.tagName;
+         const inField =
+            tag === "INPUT" ||
+            tag === "TEXTAREA" ||
+            event.target?.isContentEditable;
+
+         if (
+            (event.key === "Delete" || event.key === "Backspace") &&
+            selectedKeys.size > 0 &&
+            view !== "trash" &&
+            !inField &&
+            !lightbox
+         ) {
+            event.preventDefault();
+            const count = selectedKeys.size;
+            setConfirm({
+               type: "bulk-trash",
+               title: "Supprimer la sélection ?",
+               description: `${count} élément${count > 1 ? "s" : ""} seront envoyés à la corbeille.`,
+               confirmLabel: "Supprimer",
+            });
+            return;
+         }
+
          if (
             (event.metaKey || event.ctrlKey) &&
             event.key.toLowerCase() === "a" &&
             items.length
          ) {
-            const tag = event.target?.tagName;
-            if (
-               tag === "INPUT" ||
-               tag === "TEXTAREA" ||
-               event.target?.isContentEditable
-            ) {
+            if (inField) {
                return;
             }
             event.preventDefault();
@@ -644,10 +703,40 @@ export function DriveList({
 
       window.addEventListener("keydown", onKeyDown);
       return () => window.removeEventListener("keydown", onKeyDown);
-   }, [items, selectedKeys.size]);
+   }, [items, selectedKeys.size, view, lightbox]);
 
    function openLightbox(payload) {
-      setLightbox(payload);
+      const fileId = payload.fileId;
+      const index =
+         fileId != null
+            ? imageItems.findIndex(
+                 (entry) => String(entry.id) === String(fileId),
+              )
+            : -1;
+      setLightbox({
+         ...payload,
+         index: index >= 0 ? index : 0,
+      });
+   }
+
+   async function navigateLightbox(delta) {
+      if (!lightbox || lightbox.index == null) return;
+
+      const nextIndex = lightbox.index + delta;
+      const nextFile = imageItems[nextIndex];
+      if (!nextFile) return;
+
+      const result = await getFilePreviewUrl(nextFile.id);
+      if (result.success && result.data?.url) {
+         setLightbox({
+            src: result.data.url,
+            title: nextFile.name,
+            fileId: nextFile.id,
+            index: nextIndex,
+         });
+      } else {
+         toast.error(result.error || "Impossible d’ouvrir le fichier.");
+      }
    }
 
    function clearSelection() {
@@ -698,7 +787,17 @@ export function DriveList({
       selectedKeys.has(itemSelectionKey(item)),
    );
    const hasSelection = selectedKeys.size > 0;
-   const canDrag = view === "browse" || view === "orphans" || view === "recent";
+   const canDrag =
+      view === "browse" ||
+      view === "orphans" ||
+      view === "recent" ||
+      view === "untagged" ||
+      view === "duplicates";
+
+   const bulkSourceFolderId =
+      view === "browse" && !galleryMode && !smartFolderMode && !crossSpaceMode
+         ? folderId
+         : null;
 
    function getDragItems(item) {
       const key = itemSelectionKey(item);
@@ -818,9 +917,32 @@ export function DriveList({
 
    function onConfirmAction() {
       const current = confirm;
-      if (!current?.item) return;
+      if (!current) return;
 
       runBusy(async () => {
+         if (current.type === "bulk-trash") {
+            const fileIds = selectedItems
+               .filter((item) => item.kind === "file")
+               .map((item) => item.id);
+            const folderIds = selectedItems
+               .filter((item) => item.kind === "folder")
+               .map((item) => item.id);
+            const result = await bulkTrashItems({ fileIds, folderIds });
+            if (!result?.success) {
+               toast.error(result?.error || "Mise à la corbeille impossible");
+               return;
+            }
+            toast.success("Sélection envoyée à la corbeille");
+            clearSelection();
+            setConfirm(null);
+            startTransition(() => {
+               router.refresh();
+            });
+            return;
+         }
+
+         if (!current.item) return;
+
          if (current.type === "trash" && current.item.kind === "folder") {
             await trashFolder(current.item.id);
          } else if (current.type === "delete-forever") {
@@ -877,6 +999,14 @@ export function DriveList({
             src={lightbox?.src}
             title={lightbox?.title}
             onClose={() => setLightbox(null)}
+            onPrev={() => navigateLightbox(-1)}
+            onNext={() => navigateLightbox(1)}
+            hasPrev={Boolean(lightbox && lightbox.index > 0)}
+            hasNext={Boolean(
+               lightbox &&
+                  lightbox.index != null &&
+                  lightbox.index < imageItems.length - 1,
+            )}
          />
 
          <ConfirmDialog
@@ -915,6 +1045,7 @@ export function DriveList({
             view={view}
             selectedItems={selectedItems}
             allCount={items.length}
+            sourceFolderId={bulkSourceFolderId}
             onClear={clearSelection}
             onSelectAll={selectAll}
             onDone={() => router.refresh()}
@@ -922,9 +1053,11 @@ export function DriveList({
 
          {!items.length ? (
             <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-white/10 px-6 py-16 text-sm text-muted-foreground">
-               {isGridLayout && folders.length > 0
-                  ? "Aucun fichier"
-                  : "Aucun élément"}
+               {serverSearchActive && !gallerySearching
+                  ? "Aucun résultat pour cette recherche"
+                  : isGridLayout && folders.length > 0
+                    ? "Aucun fichier"
+                    : "Aucun élément"}
             </div>
          ) : isGridLayout ? (
             <>

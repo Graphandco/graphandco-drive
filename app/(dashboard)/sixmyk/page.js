@@ -1,7 +1,7 @@
 import { DriveBrowser } from "@/components/drive/drive-browser";
 
 export const metadata = {
-  title: "Six-MyK | Graph & Co Drive",
+  title: "6-MyK | Graph & Co Drive",
 };
 
 export default async function SixMykPage({ searchParams }) {

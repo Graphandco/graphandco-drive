@@ -24,9 +24,10 @@ services:
          DB_DATABASE: graphandco_drive
          DB_USER: drive
          DB_PASSWORD: drive
-         STORAGE_ENDPOINT: https://s3.graphandco.com
-         STORAGE_SIXMYK_ENDPOINT: https://s3.graphandco.com
+         # Régis + 6-MyK : endpoints Unraid via .env
+         # Public : VPS
          STORAGE_PUBLIC_ENDPOINT: https://s3.graphandco.com
+         STORAGE_ENDPOINT: https://s3.graphandco.com
          STORAGE_KEY_PREFIX: dev
       depends_on:
          mysql:

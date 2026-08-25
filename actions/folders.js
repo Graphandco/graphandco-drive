@@ -11,6 +11,7 @@ function revalidateDrive(spaceKey = "sixmyk") {
   revalidatePath("/trash");
   revalidatePath("/recent");
   revalidatePath("/orphans");
+  revalidatePath("/untagged");
   revalidatePath("/tags");
   revalidatePath("/", "layout");
 }

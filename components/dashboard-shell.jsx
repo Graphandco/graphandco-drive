@@ -8,6 +8,10 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { BucketMemoryProvider } from "@/components/bucket-memory";
 import { DriveDndProvider } from "@/components/drive/drive-dnd-provider";
 import { DriveDropZone } from "@/components/drive/drive-drop-zone";
+import {
+  DriveHeaderSearch,
+  DriveSearchProvider,
+} from "@/components/drive/drive-search-context";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -30,35 +34,41 @@ export function DashboardShell({
     <DriveDndProvider>
       <DriveDropZone>
         <BucketMemoryProvider initialSpace={lastBucketSpace}>
-          <SidebarProvider>
-            <AppSidebar
-              folderTrees={folderTrees}
-              smartFolders={smartFolders}
-            />
-            <SidebarInset className="bg-transparent">
-              <header className="flex h-14 shrink-0 items-center gap-2 border-b border-white/10 px-4">
-                <SidebarTrigger className="-ml-1" />
-                <Separator
-                  orientation="vertical"
-                  className="mr-2 data-[orientation=vertical]:h-4"
-                />
-                <PageBreadcrumb pathname={pathname} className="min-w-0 flex-1" />
-                <Button
-                  asChild
-                  variant="ghost"
-                  size="icon-sm"
-                  className="shrink-0 text-muted-foreground hover:text-foreground"
-                  aria-label="Paramètres"
-                  aria-current={onSettings ? "page" : undefined}
-                >
-                  <Link href="/settings">
-                    <Settings className="size-4" />
-                  </Link>
-                </Button>
-              </header>
-              <main className="flex flex-1 flex-col p-4">{children}</main>
-            </SidebarInset>
-          </SidebarProvider>
+          <DriveSearchProvider>
+            <SidebarProvider>
+              <AppSidebar
+                folderTrees={folderTrees}
+                smartFolders={smartFolders}
+              />
+              <SidebarInset className="bg-transparent">
+                <header className="flex h-14 shrink-0 items-center gap-2 border-b border-white/10 px-4">
+                  <SidebarTrigger className="-ml-1" />
+                  <Separator
+                    orientation="vertical"
+                    className="mr-2 data-[orientation=vertical]:h-4"
+                  />
+                  <PageBreadcrumb
+                    pathname={pathname}
+                    className="min-w-0 flex-1"
+                  />
+                  <DriveHeaderSearch />
+                  <Button
+                    asChild
+                    variant="ghost"
+                    size="icon-sm"
+                    className="shrink-0 text-muted-foreground hover:text-foreground"
+                    aria-label="Paramètres"
+                    aria-current={onSettings ? "page" : undefined}
+                  >
+                    <Link href="/settings">
+                      <Settings className="size-4" />
+                    </Link>
+                  </Button>
+                </header>
+                <main className="flex flex-1 flex-col p-4">{children}</main>
+              </SidebarInset>
+            </SidebarProvider>
+          </DriveSearchProvider>
         </BucketMemoryProvider>
       </DriveDropZone>
     </DriveDndProvider>

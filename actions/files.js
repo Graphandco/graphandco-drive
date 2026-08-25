@@ -7,6 +7,7 @@ import { query } from "@/lib/db";
 import { linkFileToFolder } from "@/lib/file-folders";
 import { getSpaceConfig, FILES_PAGE_SIZE } from "@/lib/drive";
 import { resolveRecentDays } from "@/lib/recent-settings";
+import { tagsAndFilterClause } from "@/lib/tags";
 
 function revalidateDrive(spaceKey = "sixmyk") {
   const space = getSpaceConfig(spaceKey);
@@ -14,6 +15,8 @@ function revalidateDrive(spaceKey = "sixmyk") {
   revalidatePath("/trash");
   revalidatePath("/recent");
   revalidatePath("/orphans");
+  revalidatePath("/untagged");
+  revalidatePath("/duplicates");
   revalidatePath("/tags");
   revalidatePath("/settings");
   revalidatePath("/", "layout");
@@ -82,16 +85,18 @@ export async function countFilesInSpace(space = "sixmyk") {
   return Number(rows[0]?.total || 0);
 }
 
-/** Filtre exact d’un tag dans la chaîne CSV (insensible à la casse). */
+/** Filtre tag(s) — un tag ou CSV (AND si plusieurs). */
 function tagFilterClause(tag) {
-  const normalized = String(tag || "").trim().toLowerCase();
-  if (!normalized) return { sql: "", params: [] };
-
-  return {
-    sql: `AND CONCAT(',', REPLACE(REPLACE(LOWER(TRIM(f.tags)), ', ', ','), ';', ','), ',') LIKE ?`,
-    params: [`%,${normalized},%`],
-  };
+  return tagsAndFilterClause(tag);
 }
+
+const DUPLICATES_JOIN = `INNER JOIN (
+  SELECT space, name, size_bytes
+  FROM files
+  WHERE deleted_at IS NULL
+  GROUP BY space, name, size_bytes
+  HAVING COUNT(*) > 1
+) dup ON dup.space = f.space AND dup.name = f.name AND dup.size_bytes = f.size_bytes`;
 
 /** Recherche libre (nom ou tags, insensible à la casse). */
 function searchFilterClause(search) {
@@ -283,6 +288,80 @@ export async function listFilesPaginated({
            AND NOT EXISTS (
              SELECT 1 FROM file_folders ff WHERE ff.file_id = f.id
            )
+           ${searchFilter.sql}`,
+        [...searchFilter.params]
+      );
+      const total = Number(countRows[0]?.total || 0);
+      return {
+        success: true,
+        data: rows,
+        pagination: {
+          total,
+          limit: pageLimit,
+          offset: pageOffset,
+          hasMore: pageOffset + rows.length < total,
+        },
+        stats: {
+          fileCount: total,
+          totalBytes: Number(countRows[0]?.bytes || 0),
+        },
+      };
+    }
+
+    if (view === "untagged") {
+      const searchFilter = searchFilterClause(normalizedSearch);
+      const rows = await query(
+        `SELECT ${FILE_COLUMNS}
+         FROM files f
+         WHERE f.deleted_at IS NULL
+           AND (f.tags IS NULL OR TRIM(f.tags) = '')
+           ${searchFilter.sql}
+         ORDER BY f.updated_at DESC, f.name ASC
+         ${pageSql}`,
+        [...searchFilter.params]
+      );
+      const countRows = await query(
+        `SELECT COUNT(*) AS total, COALESCE(SUM(f.size_bytes), 0) AS bytes
+         FROM files f
+         WHERE f.deleted_at IS NULL
+           AND (f.tags IS NULL OR TRIM(f.tags) = '')
+           ${searchFilter.sql}`,
+        [...searchFilter.params]
+      );
+      const total = Number(countRows[0]?.total || 0);
+      return {
+        success: true,
+        data: rows,
+        pagination: {
+          total,
+          limit: pageLimit,
+          offset: pageOffset,
+          hasMore: pageOffset + rows.length < total,
+        },
+        stats: {
+          fileCount: total,
+          totalBytes: Number(countRows[0]?.bytes || 0),
+        },
+      };
+    }
+
+    if (view === "duplicates") {
+      const searchFilter = searchFilterClause(normalizedSearch);
+      const rows = await query(
+        `SELECT ${FILE_COLUMNS}
+         FROM files f
+         ${DUPLICATES_JOIN}
+         WHERE f.deleted_at IS NULL
+           ${searchFilter.sql}
+         ORDER BY f.space ASC, f.name ASC, f.size_bytes ASC, f.updated_at DESC
+         ${pageSql}`,
+        [...searchFilter.params]
+      );
+      const countRows = await query(
+        `SELECT COUNT(*) AS total, COALESCE(SUM(f.size_bytes), 0) AS bytes
+         FROM files f
+         ${DUPLICATES_JOIN}
+         WHERE f.deleted_at IS NULL
            ${searchFilter.sql}`,
         [...searchFilter.params]
       );

@@ -76,7 +76,6 @@ export async function uploadFile(formData) {
     const resolvedSpace = parent.data.space || space;
 
     const key = buildObjectKey({
-      space: resolvedSpace,
       fileName: file.name,
     });
 

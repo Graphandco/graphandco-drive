@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FolderPlus, FolderUp, Loader2, Trash2, Upload } from "lucide-react";
+import { FolderPlus, Loader2, Trash2, Upload } from "lucide-react";
 
 import { createFolder, emptyTrash, trashFolder } from "@/actions";
 import { BusyOverlay } from "@/components/drive/busy-overlay";
@@ -30,7 +30,6 @@ export function DriveToolbar({
 }) {
   const router = useRouter();
   const fileInputRef = useRef(null);
-  const folderInputRef = useRef(null);
   const { isBusy: pending, startTransition, runBusy } = useBusyAction();
   const [mode, setMode] = useState(null);
   const [name, setName] = useState("");
@@ -166,10 +165,6 @@ export function DriveToolbar({
     fileInputRef.current?.click();
   }
 
-  function onPickFolder() {
-    folderInputRef.current?.click();
-  }
-
   function onFilesSelected(event) {
     const entries = collectFileListEntries(event.target.files);
     event.target.value = "";
@@ -230,16 +225,6 @@ export function DriveToolbar({
             {pending ? <Loader2 className="animate-spin" /> : <Upload />}
             Importer
           </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={pending}
-            onClick={onPickFolder}
-          >
-            {pending ? <Loader2 className="animate-spin" /> : <FolderUp />}
-            Importer un dossier
-          </Button>
           {!isRootFolder ? (
             <Button
               type="button"
@@ -270,14 +255,6 @@ export function DriveToolbar({
           type="file"
           multiple
           className="hidden"
-          onChange={onFilesSelected}
-        />
-        <input
-          ref={folderInputRef}
-          type="file"
-          className="hidden"
-          multiple
-          webkitdirectory=""
           onChange={onFilesSelected}
         />
       </div>

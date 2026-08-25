@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { formatTags, parseTags } from "@/lib/tags";
 
 export function EditSmartFolderDialog({
   open,
@@ -26,7 +27,7 @@ export function EditSmartFolderDialog({
 }) {
   const router = useRouter();
   const [name, setName] = useState("");
-  const [tag, setTag] = useState("");
+  const [selected, setSelected] = useState(() => new Set());
   const [availableTags, setAvailableTags] = useState([]);
   const [loadingTags, setLoadingTags] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -36,7 +37,10 @@ export function EditSmartFolderDialog({
     () =>
       new Set(
         existingTags
-          .filter((entry) => entry.toLowerCase() !== folder?.tag?.toLowerCase())
+          .filter(
+            (entry) =>
+              entry.toLowerCase() !== String(folder?.tag || "").toLowerCase()
+          )
           .map((entry) => entry.toLowerCase())
       ),
     [existingTags, folder?.tag]
@@ -46,7 +50,9 @@ export function EditSmartFolderDialog({
     if (!open || !folder) return;
 
     setName(folder.name || "");
-    setTag(folder.tag || "");
+    setSelected(
+      new Set(parseTags(folder.tag).map((tag) => tag.toLowerCase()))
+    );
     setError("");
     setLoadingTags(true);
 
@@ -64,27 +70,47 @@ export function EditSmartFolderDialog({
     const seen = new Set();
     const list = [];
 
-    for (const entry of [tag, ...(availableTags || [])]) {
+    for (const entry of [...parseTags(folder?.tag), ...availableTags]) {
       const value = String(entry || "").trim();
       if (!value) continue;
       const key = value.toLowerCase();
-      if (seen.has(key) || existingKeys.has(key)) continue;
+      if (seen.has(key)) continue;
       seen.add(key);
       list.push(value);
     }
 
     return list.sort((a, b) => a.localeCompare(b, "fr"));
-  }, [availableTags, tag, existingKeys]);
+  }, [availableTags, folder?.tag]);
+
+  const selectedList = useMemo(
+    () => selectableTags.filter((tag) => selected.has(tag.toLowerCase())),
+    [selectableTags, selected]
+  );
+
+  function toggleTag(tag) {
+    const key = tag.toLowerCase();
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
     if (!folder || saving) return;
 
     const nextName = name.trim();
-    const nextTag = tag.trim();
+    const nextTag = formatTags(selectedList);
 
     if (!nextName || !nextTag) {
-      setError("Nom et tag requis.");
+      setError("Nom et au moins un tag requis.");
+      return;
+    }
+
+    if (existingKeys.has(nextTag.toLowerCase())) {
+      setError("Un dossier intelligent existe déjà pour cette combinaison.");
       return;
     }
 
@@ -123,7 +149,7 @@ export function EditSmartFolderDialog({
           <DialogHeader>
             <DialogTitle>Modifier le dossier intelligent</DialogTitle>
             <DialogDescription>
-              Renommez l’entrée sidebar ou changez le tag filtré.
+              Renommez l’entrée sidebar ou modifiez les tags filtrés (AND).
             </DialogDescription>
           </DialogHeader>
 
@@ -141,45 +167,40 @@ export function EditSmartFolderDialog({
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm text-muted-foreground" htmlFor="sf-tag">
-                Tag
-              </label>
-              <Input
-                id="sf-tag"
-                value={tag}
-                disabled={saving}
-                onChange={(event) => setTag(event.target.value)}
-                list="sf-tag-suggestions"
-              />
-              <datalist id="sf-tag-suggestions">
-                {selectableTags.map((entry) => (
-                  <option key={entry} value={entry} />
-                ))}
-              </datalist>
+              <p className="text-sm text-muted-foreground">Tags (AND)</p>
               {loadingTags ? (
-                <p className="text-xs text-muted-foreground">Chargement des tags…</p>
-              ) : null}
+                <p className="text-xs text-muted-foreground">
+                  Chargement des tags…
+                </p>
+              ) : selectableTags.length ? (
+                <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
+                  {selectableTags.map((entry) => {
+                    const active = selected.has(entry.toLowerCase());
+                    return (
+                      <button
+                        key={entry}
+                        type="button"
+                        disabled={saving}
+                        onClick={() => toggleTag(entry)}
+                        className={cn(
+                          "flex w-full items-center justify-between rounded-lg border border-white/10 px-3 py-2 text-left text-sm transition hover:border-primary/40 hover:bg-primary/10",
+                          active && "border-primary/50 bg-primary/10"
+                        )}
+                      >
+                        <span>{entry}</span>
+                        {active ? (
+                          <span className="text-xs text-primary">Actif</span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Aucun tag disponible.
+                </p>
+              )}
             </div>
-
-            {selectableTags.length > 1 ? (
-              <div className="flex flex-wrap gap-1.5">
-                {selectableTags.slice(0, 12).map((entry) => (
-                  <button
-                    key={entry}
-                    type="button"
-                    disabled={saving}
-                    onClick={() => setTag(entry)}
-                    className={cn(
-                      "rounded-full border border-white/10 px-2.5 py-0.5 text-xs transition hover:border-primary/40 hover:bg-primary/10",
-                      tag.toLowerCase() === entry.toLowerCase() &&
-                        "border-primary/50 bg-primary/10"
-                    )}
-                  >
-                    {entry}
-                  </button>
-                ))}
-              </div>
-            ) : null}
 
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
           </div>
@@ -193,7 +214,10 @@ export function EditSmartFolderDialog({
             >
               Annuler
             </Button>
-            <Button type="submit" disabled={saving || !name.trim() || !tag.trim()}>
+            <Button
+              type="submit"
+              disabled={saving || !name.trim() || !selectedList.length}
+            >
               {saving ? <Loader2 className="animate-spin" /> : null}
               Enregistrer
             </Button>

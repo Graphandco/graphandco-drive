@@ -10,40 +10,42 @@ import { readThemeCookie } from "@/lib/theme";
 import "./globals.css";
 
 const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+   variable: "--font-geist-sans",
+   subsets: ["latin"],
 });
 
 const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+   variable: "--font-geist-mono",
+   subsets: ["latin"],
 });
 
 export const metadata = {
-  title: "Graph & Co Drive",
-  description: "Espace de fichiers Graph & Co",
+   title: "Graph & Co Drive",
+   description: "Espace de fichiers Graph & Co",
 };
 
-export default async function RootLayout({ children }) {
-  const cookieStore = await cookies();
-  const theme = readThemeCookie(cookieStore);
+export const dynamic = "force-dynamic";
 
-  return (
-    <html
-      lang="fr"
-      data-theme={theme}
-      className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
-    >
-      <body className="min-h-full">
-        <ThemeProvider initialTheme={theme}>
-          <TooltipProvider>
-            <AuraBackground>
-              {children}
-              <Toaster />
-            </AuraBackground>
-          </TooltipProvider>
-        </ThemeProvider>
-      </body>
-    </html>
-  );
+export default async function RootLayout({ children }) {
+   const cookieStore = await cookies();
+   const theme = readThemeCookie(cookieStore);
+
+   return (
+      <html
+         lang="fr"
+         data-theme={theme}
+         className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
+      >
+         <body className="min-h-full" suppressHydrationWarning>
+            <ThemeProvider initialTheme={theme}>
+               <TooltipProvider>
+                  <AuraBackground>
+                     {children}
+                     <Toaster />
+                  </AuraBackground>
+               </TooltipProvider>
+            </ThemeProvider>
+         </body>
+      </html>
+   );
 }

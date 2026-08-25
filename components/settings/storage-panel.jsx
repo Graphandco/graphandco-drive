@@ -3,9 +3,9 @@ import { CheckCircle2, CircleX } from "lucide-react";
 import { formatBytes } from "@/lib/format";
 
 const BUCKETS = [
-  { key: "regis", label: "Régis (NAS)" },
-  { key: "public", label: "Public" },
-  { key: "sixmyk", label: "Six-MyK (privé)" },
+  { key: "regis", label: "Régis (Unraid)" },
+  { key: "sixmyk", label: "6-MyK (Unraid)" },
+  { key: "public", label: "Public (VPS)" },
 ];
 
 export function StoragePanel({ stats, buckets, spaceStats = {}, error = null }) {

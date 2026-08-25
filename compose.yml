@@ -13,7 +13,8 @@ services:
          HOSTNAME: 0.0.0.0
          PORT: 3000
          DB_HOST: my-sql
-         STORAGE_SIXMYK_ENDPOINT: http://seaweedfs:8336
+         # Régis + 6-MyK : Unraid via .env (STORAGE_REGIS_* / STORAGE_6-MYK_*)
+         # Public : SeaweedFS local VPS
          STORAGE_PUBLIC_ENDPOINT: http://seaweedfs:8336
          STORAGE_ENDPOINT: http://seaweedfs:8336
          STORAGE_KEY_PREFIX: ""

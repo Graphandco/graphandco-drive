@@ -11,11 +11,13 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { smartFolderHref } from "@/lib/drive";
+import { formatTags } from "@/lib/tags";
 
 export function CreateSmartFolderDialog({
   open,
@@ -25,8 +27,9 @@ export function CreateSmartFolderDialog({
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [creating, setCreating] = useState(null);
+  const [creating, setCreating] = useState(false);
   const [tags, setTags] = useState([]);
+  const [selected, setSelected] = useState(() => new Set());
   const [error, setError] = useState("");
 
   const existingKeys = useMemo(
@@ -39,12 +42,18 @@ export function CreateSmartFolderDialog({
     [tags, existingKeys]
   );
 
+  const selectedList = useMemo(
+    () => availableTags.filter((tag) => selected.has(tag.toLowerCase())),
+    [availableTags, selected]
+  );
+
   useEffect(() => {
     if (!open || !space) return;
 
     let cancelled = false;
     setLoading(true);
     setError("");
+    setSelected(new Set());
 
     listActiveTags({ space }).then((result) => {
       if (cancelled) return;
@@ -62,14 +71,27 @@ export function CreateSmartFolderDialog({
     };
   }, [open, space]);
 
-  async function onPickTag(tag) {
-    if (!space || creating) return;
+  function toggleTag(tag) {
+    const key = tag.toLowerCase();
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
-    setCreating(tag);
+  async function onCreate() {
+    if (!space || creating || !selectedList.length) return;
+
+    setCreating(true);
     setError("");
 
     try {
-      const result = await createSmartFolder({ space, tag });
+      const result = await createSmartFolder({
+        space,
+        tags: selectedList,
+      });
       if (!result.success) {
         setError(result.error || "Impossible de créer le dossier intelligent.");
         return;
@@ -80,11 +102,20 @@ export function CreateSmartFolderDialog({
       router.push(smartFolderHref(space, result.data.id));
       router.refresh();
     } catch (pickError) {
-      setError(pickError?.message || "Impossible de créer le dossier intelligent.");
+      setError(
+        pickError?.message || "Impossible de créer le dossier intelligent."
+      );
     } finally {
-      setCreating(null);
+      setCreating(false);
     }
   }
+
+  const previewName =
+    selectedList.length > 1
+      ? selectedList.join(" + ")
+      : selectedList[0] || "";
+
+  const previewTag = formatTags(selectedList);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -92,8 +123,8 @@ export function CreateSmartFolderDialog({
         <DialogHeader>
           <DialogTitle>Nouveau dossier intelligent</DialogTitle>
           <DialogDescription>
-            Choisissez un tag : toutes les images taguées y seront listées
-            automatiquement.
+            Sélectionnez un ou plusieurs tags (AND) : seules les images
+            possédant tous les tags seront listées.
           </DialogDescription>
         </DialogHeader>
 
@@ -104,21 +135,21 @@ export function CreateSmartFolderDialog({
         ) : availableTags.length ? (
           <div className="max-h-72 space-y-1 overflow-y-auto pr-1">
             {availableTags.map((tag) => {
-              const pending = creating === tag;
+              const active = selected.has(tag.toLowerCase());
               return (
                 <button
                   key={tag}
                   type="button"
-                  disabled={Boolean(creating)}
-                  onClick={() => onPickTag(tag)}
+                  disabled={creating}
+                  onClick={() => toggleTag(tag)}
                   className={cn(
                     "flex w-full items-center justify-between rounded-lg border border-white/10 px-3 py-2 text-left text-sm transition hover:border-primary/40 hover:bg-primary/10",
-                    pending && "border-primary/50 bg-primary/10"
+                    active && "border-primary/50 bg-primary/10"
                   )}
                 >
                   <span>{tag}</span>
-                  {pending ? (
-                    <Loader2 className="size-4 animate-spin text-primary" />
+                  {active ? (
+                    <span className="text-xs text-primary">Sélectionné</span>
                   ) : null}
                 </button>
               );
@@ -127,23 +158,37 @@ export function CreateSmartFolderDialog({
         ) : (
           <p className="py-4 text-sm text-muted-foreground">
             {tags.length
-              ? "Tous les tags actifs ont déjà un dossier intelligent."
+              ? "Toutes les combinaisons de tags actifs ont déjà un dossier intelligent."
               : "Aucun tag actif dans cet espace. Ajoutez des tags à vos images d’abord."}
           </p>
         )}
 
+        {selectedList.length ? (
+          <p className="text-xs text-muted-foreground">
+            Aperçu : « {previewName} » ({previewTag})
+          </p>
+        ) : null}
+
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-        <div className="flex justify-end">
+        <DialogFooter>
           <Button
             type="button"
             variant="outline"
             onClick={() => onOpenChange(false)}
-            disabled={Boolean(creating)}
+            disabled={creating}
           >
             Fermer
           </Button>
-        </div>
+          <Button
+            type="button"
+            disabled={creating || !selectedList.length}
+            onClick={onCreate}
+          >
+            {creating ? <Loader2 className="animate-spin" /> : null}
+            Créer
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

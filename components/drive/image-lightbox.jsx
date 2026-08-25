@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Minus, Plus, RotateCcw, X, ZoomIn } from "lucide-react";
+import { Minus, Plus, ChevronLeft, ChevronRight, RotateCcw, X, ZoomIn } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -18,7 +18,16 @@ const MIN_ZOOM = 1;
 const MAX_ZOOM = 5;
 const ZOOM_STEP = 0.25;
 
-export function ImageLightbox({ open, src, title, onClose }) {
+export function ImageLightbox({
+  open,
+  src,
+  title,
+  onClose,
+  onPrev,
+  onNext,
+  hasPrev = false,
+  hasNext = false,
+}) {
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const dragRef = useRef(null);
@@ -37,6 +46,14 @@ export function ImageLightbox({ open, src, title, onClose }) {
     if (!open) return;
 
     function onKeyDown(event) {
+      if (event.key === "ArrowLeft" && hasPrev) {
+        event.preventDefault();
+        onPrev?.();
+      }
+      if (event.key === "ArrowRight" && hasNext) {
+        event.preventDefault();
+        onNext?.();
+      }
       if (event.key === "+" || event.key === "=") {
         setZoom((value) => Math.min(MAX_ZOOM, value + ZOOM_STEP));
       }
@@ -48,7 +65,7 @@ export function ImageLightbox({ open, src, title, onClose }) {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, resetView]);
+  }, [open, resetView, hasPrev, hasNext, onPrev, onNext]);
 
   function onWheel(event) {
     event.preventDefault();
@@ -103,7 +120,7 @@ export function ImageLightbox({ open, src, title, onClose }) {
               {title || "Aperçu"}
             </DialogTitle>
             <DialogDescription className="text-xs text-white/60">
-              {Math.round(zoom * 100)}% — molette, +/− ou double-clic pour zoomer
+              {Math.round(zoom * 100)}% — flèches pour naviguer, +/− pour zoomer
             </DialogDescription>
           </div>
           <div className="flex shrink-0 items-center gap-1">
@@ -170,6 +187,32 @@ export function ImageLightbox({ open, src, title, onClose }) {
             else setZoom(2);
           }}
         >
+          {hasPrev ? (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              onClick={onPrev}
+              aria-label="Image précédente"
+              className="absolute left-3 top-1/2 z-20 size-14 -translate-y-1/2 rounded-full border border-white/20 bg-black/55 text-white shadow-lg backdrop-blur-sm hover:bg-black/75 hover:text-white [&_svg]:size-9"
+            >
+              <ChevronLeft strokeWidth={2.5} />
+            </Button>
+          ) : null}
+
+          {hasNext ? (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              onClick={onNext}
+              aria-label="Image suivante"
+              className="absolute right-3 top-1/2 z-20 size-14 -translate-y-1/2 rounded-full border border-white/20 bg-black/55 text-white shadow-lg backdrop-blur-sm hover:bg-black/75 hover:text-white [&_svg]:size-9"
+            >
+              <ChevronRight strokeWidth={2.5} />
+            </Button>
+          ) : null}
+
           {src ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img

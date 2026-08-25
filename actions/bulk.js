@@ -11,7 +11,7 @@ import {
 import { query } from "@/lib/db";
 import { getSpaceConfig } from "@/lib/drive";
 import { deleteObject } from "@/lib/storage";
-import { formatTags, mergeTags, parseTags } from "@/lib/tags";
+import { formatTags, mergeTags, parseTags, removeTags } from "@/lib/tags";
 
 function revalidateDrive(spaceKey = "sixmyk") {
   const space = getSpaceConfig(spaceKey);
@@ -19,6 +19,8 @@ function revalidateDrive(spaceKey = "sixmyk") {
   revalidatePath("/trash");
   revalidatePath("/recent");
   revalidatePath("/orphans");
+  revalidatePath("/untagged");
+  revalidatePath("/duplicates");
   revalidatePath("/tags");
   revalidatePath("/settings");
   revalidatePath("/", "layout");
@@ -65,6 +67,47 @@ export async function bulkAddFileTags({ ids, tags }) {
     return {
       success: false,
       error: error?.message || "Impossible d’ajouter les tags.",
+    };
+  }
+}
+
+/** Retire des tags des fichiers sélectionnés. */
+export async function bulkRemoveFileTags({ ids, tags }) {
+  const fileIds = uniqueIds(ids);
+  const toRemove = parseTags(tags);
+
+  if (!fileIds.length) {
+    return { success: false, error: "Aucun fichier sélectionné." };
+  }
+
+  if (!toRemove.length) {
+    return { success: false, error: "Indiquez au moins un tag à retirer." };
+  }
+
+  try {
+    const spaces = new Set();
+    let updated = 0;
+
+    for (const id of fileIds) {
+      const existing = await getFile(id);
+      if (!existing.success || existing.data.deleted_at) continue;
+
+      const next = formatTags(removeTags(existing.data.tags, toRemove));
+      await query(`UPDATE files SET tags = ? WHERE id = ?`, [next, id]);
+      spaces.add(existing.data.space);
+      updated += 1;
+    }
+
+    for (const space of spaces) {
+      revalidateDrive(space);
+    }
+
+    return { success: true, data: { updated } };
+  } catch (error) {
+    console.error("bulkRemoveFileTags:", error);
+    return {
+      success: false,
+      error: error?.message || "Impossible de retirer les tags.",
     };
   }
 }
@@ -128,6 +171,22 @@ export async function bulkTrashItems({ fileIds = [], folderIds = [] }) {
       error: error?.message || "Impossible de supprimer la sélection.",
     };
   }
+}
+
+/** Garde un fichier d’un groupe de doublons, envoie les autres à la corbeille. */
+export async function keepDuplicateFile({ keepId, trashIds = [] }) {
+  const keep = Number(keepId);
+  const toTrash = uniqueIds(trashIds).filter((id) => id !== keep);
+
+  if (!keep) {
+    return { success: false, error: "Fichier à conserver invalide." };
+  }
+
+  if (!toTrash.length) {
+    return { success: false, error: "Aucun doublon à retirer." };
+  }
+
+  return bulkTrashItems({ fileIds: toTrash, folderIds: [] });
 }
 
 /** Restaure fichiers + dossiers depuis la corbeille. */

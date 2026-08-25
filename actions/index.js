@@ -1,3 +1,4 @@
+export { loginAction, logoutAction } from "@/actions/auth";
 export { checkDatabaseHealth } from "@/actions/health";
 export {
   getFolder,
@@ -42,7 +43,9 @@ export {
 } from "@/actions/smart-folders";
 export {
   bulkAddFileTags,
+  bulkRemoveFileTags,
   bulkTrashItems,
+  keepDuplicateFile,
   bulkRestoreItems,
   bulkDeletePermanentItems,
 } from "@/actions/bulk";

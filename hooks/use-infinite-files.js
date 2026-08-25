@@ -60,6 +60,9 @@ export function useInfiniteFiles({
     async function fetchSearchPage() {
       loadingRef.current = true;
       setSearching(true);
+      setFiles([]);
+      setHasMore(false);
+      offsetRef.current = 0;
 
       try {
         const result = await listFilesPaginated({
@@ -74,7 +77,14 @@ export function useInfiniteFiles({
           offset: 0,
         });
 
-        if (cancelled || !result.success) return;
+        if (cancelled) return;
+
+        if (!result.success) {
+          setFiles([]);
+          setHasMore(false);
+          setTotal(0);
+          return;
+        }
 
         const next = result.data || [];
         setFiles(next);
