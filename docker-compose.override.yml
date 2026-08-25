@@ -1,9 +1,14 @@
 services:
    app:
       container_name: graphandphotos-dev
+      # Image locale distincte — ne pas réutiliser dockerhub…/graphandphotos:latest (CMD = node server.js)
+      image: graphandphotos-dev:latest
       build:
          context: .
          dockerfile: Dockerfile.dev
+         tags:
+            - graphandphotos-dev:latest
+      command: ["npm", "run", "dev"]
       read_only: false
       cpus: 2
       mem_limit: 4g
