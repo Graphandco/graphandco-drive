@@ -11,6 +11,7 @@ export default async function PublicPage({ searchParams }) {
       space="public"
       folderId={params?.folder}
       smartFolderId={params?.smart}
+      favoritesMode={params?.favorites === "1" || params?.favorites === "true"}
       openFileId={params?.file}
       view="browse"
     />

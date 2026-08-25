@@ -23,6 +23,7 @@ export async function getDriveContents({
   space = "sixmyk",
   folderId,
   smartFolderId,
+  favoritesMode = false,
   view = "browse",
   recentDays = null,
 } = {}) {
@@ -50,6 +51,7 @@ export async function getDriveContents({
       galleryMode: false,
       smartFolderMode: false,
       smartFolder: null,
+      favoritesMode: false,
       filesPagination: filesResult.pagination || null,
       recentDays: days,
       error: filesResult.error || null,
@@ -134,6 +136,40 @@ export async function getDriveContents({
     };
   }
 
+  if (view === "browse" && favoritesMode) {
+    const filesResult = await listFilesPaginated({
+      space,
+      folderId: null,
+      favoritesOnly: true,
+      limit: FILES_PAGE_SIZE,
+      offset: 0,
+    });
+
+    return {
+      success: true,
+      folder: null,
+      path: [
+        {
+          id: "favorites",
+          name: "Favoris",
+          favorites: true,
+        },
+      ],
+      folders: [],
+      files: filesResult.data || [],
+      stats: filesResult.stats || {
+        fileCount: filesResult.pagination?.total || 0,
+        totalBytes: 0,
+      },
+      galleryMode: true,
+      smartFolderMode: false,
+      smartFolder: null,
+      favoritesMode: true,
+      filesPagination: filesResult.pagination || null,
+      error: filesResult.error || null,
+    };
+  }
+
   if (view === "browse" && smartFolderId) {
     const smartResult = await getSmartFolder(smartFolderId);
 
@@ -198,6 +234,7 @@ export async function getDriveContents({
       galleryMode: true,
       smartFolderMode: true,
       smartFolder,
+      favoritesMode: false,
       filesPagination: filesResult.pagination || null,
       error: filesResult.error || statsResult.error || null,
     };
@@ -275,6 +312,7 @@ export async function getDriveContents({
       galleryMode,
       smartFolderMode: false,
       smartFolder: null,
+      favoritesMode: false,
       filesPagination: filesResult.pagination || null,
       error:
         foldersResult.error ||
@@ -300,6 +338,7 @@ export async function getDriveContents({
     galleryMode: false,
     smartFolderMode: false,
     smartFolder: null,
+    favoritesMode: false,
     filesPagination: filesResult.pagination || null,
     error: foldersResult.error || filesResult.error || null,
   };

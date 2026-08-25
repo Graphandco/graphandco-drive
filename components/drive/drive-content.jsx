@@ -17,6 +17,7 @@ import {
 import { filterDriveItems } from "@/lib/drive-search";
 import {
   folderHref,
+  favoritesHref,
   getSpaceConfig,
   smartFolderHref,
 } from "@/lib/drive";
@@ -35,6 +36,7 @@ export function DriveContent({
   galleryMode = false,
   smartFolderMode = false,
   smartFolder = null,
+  favoritesMode = false,
   filesPagination = null,
   recentDays = null,
 }) {
@@ -53,11 +55,11 @@ export function DriveContent({
     view === "untagged" ||
     view === "duplicates";
   const folderBrowseMode =
-    view === "browse" && !galleryMode && !smartFolderMode;
+    view === "browse" && !galleryMode && !smartFolderMode && !favoritesMode;
 
   const searchPlaceholder = folderBrowseMode
     ? "Rechercher dans ce dossier…"
-    : galleryMode || smartFolderMode
+    : galleryMode || smartFolderMode || favoritesMode
       ? "Rechercher dans la galerie…"
       : "Rechercher (nom, tags)…";
 
@@ -71,7 +73,7 @@ export function DriveContent({
   useEffect(() => {
     setQuery("");
     setSearchMeta({ total: null, searching: false });
-  }, [folderId, view, space, smartFolder?.id]);
+  }, [folderId, view, space, smartFolder?.id, favoritesMode]);
 
   const filtered = useMemo(
     () => filterDriveItems(folders, files, query),
@@ -90,6 +92,7 @@ export function DriveContent({
     crossSpaceMode ||
     galleryMode ||
     smartFolderMode ||
+    favoritesMode ||
     folderBrowseInfinite ||
     folderServerSearch;
   const usesServerSearch =
@@ -123,9 +126,11 @@ export function DriveContent({
                           <BreadcrumbLink asChild>
                             <Link
                               href={
-                                crumb.smartFolderId
-                                  ? smartFolderHref(space, crumb.smartFolderId)
-                                  : folderHref(space, crumb.id)
+                                crumb.favorites
+                                  ? favoritesHref(space)
+                                  : crumb.smartFolderId
+                                    ? smartFolderHref(space, crumb.smartFolderId)
+                                    : folderHref(space, crumb.id)
                               }
                             >
                               {crumb.name}
@@ -196,6 +201,7 @@ export function DriveContent({
         galleryMode={galleryMode}
         smartFolderMode={smartFolderMode}
         smartFolder={smartFolder}
+        favoritesMode={favoritesMode}
         filesPagination={filesPagination}
         crossSpaceMode={crossSpaceMode}
         recentDays={recentDays}

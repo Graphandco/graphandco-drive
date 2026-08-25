@@ -5,6 +5,7 @@ export async function DriveBrowser({
   space = "sixmyk",
   folderId,
   smartFolderId,
+  favoritesMode = false,
   openFileId,
   view = "browse",
   recentDays = null,
@@ -13,6 +14,7 @@ export async function DriveBrowser({
     space,
     folderId,
     smartFolderId,
+    favoritesMode,
     view,
     recentDays,
   });
@@ -46,6 +48,7 @@ export async function DriveBrowser({
       galleryMode={contents.galleryMode || false}
       smartFolderMode={contents.smartFolderMode || false}
       smartFolder={contents.smartFolder || null}
+      favoritesMode={contents.favoritesMode || false}
       filesPagination={contents.filesPagination || null}
       recentDays={contents.recentDays ?? recentDays}
     />

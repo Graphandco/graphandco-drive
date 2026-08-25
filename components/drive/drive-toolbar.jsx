@@ -2,7 +2,14 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FolderPlus, Heart, Loader2, Trash2, Upload } from "lucide-react";
+import {
+  CheckSquare,
+  FolderPlus,
+  Heart,
+  Loader2,
+  Trash2,
+  Upload,
+} from "lucide-react";
 
 import { createFolder, emptyTrash, trashFolder } from "@/actions";
 import { BusyOverlay } from "@/components/drive/busy-overlay";
@@ -29,6 +36,8 @@ export function DriveToolbar({
   favoritesOnly = false,
   onFavoritesOnlyChange,
   smartFolderMode = false,
+  onSelectAll,
+  selectingAll = false,
   trashCount = 0,
 }) {
   const router = useRouter();
@@ -40,6 +49,27 @@ export function DriveToolbar({
   const [status, setStatus] = useState("");
   const [confirm, setConfirm] = useState(null);
   const spaceConfig = getSpaceConfig(space);
+  const busy = pending || selectingAll;
+
+  function SelectAllButton() {
+    if (typeof onSelectAll !== "function") return null;
+    return (
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={busy}
+        onClick={() => onSelectAll()}
+      >
+        {selectingAll ? (
+          <Loader2 className="animate-spin" />
+        ) : (
+          <CheckSquare />
+        )}
+        Tout sélectionner
+      </Button>
+    );
+  }
 
   function LayoutControls() {
     if (typeof onLayoutChange !== "function") return null;
@@ -144,7 +174,8 @@ export function DriveToolbar({
 
   if (view !== "browse") {
     return (
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <SelectAllButton />
         {LayoutControls()}
       </div>
     );
@@ -152,7 +183,8 @@ export function DriveToolbar({
 
   if (smartFolderMode) {
     return (
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <SelectAllButton />
         {LayoutControls()}
       </div>
     );
@@ -236,7 +268,7 @@ export function DriveToolbar({
             type="button"
             size="sm"
             variant={mode === "folder" ? "secondary" : "outline"}
-            disabled={pending}
+            disabled={busy}
             onClick={() => {
               setMode((current) => (current === "folder" ? null : "folder"));
               setError("");
@@ -249,18 +281,19 @@ export function DriveToolbar({
             type="button"
             size="sm"
             variant="outline"
-            disabled={pending}
+            disabled={busy}
             onClick={onPickFiles}
           >
             {pending ? <Loader2 className="animate-spin" /> : <Upload />}
             Importer
           </Button>
+          <SelectAllButton />
           {!isRootFolder ? (
             <Button
               type="button"
               size="icon-sm"
               variant="outline"
-              disabled={pending}
+              disabled={busy}
               aria-label="Supprimer le dossier"
               title="Supprimer le dossier"
               onClick={() =>
@@ -295,19 +328,19 @@ export function DriveToolbar({
           <Input
             autoFocus
             value={name}
-            disabled={pending}
+            disabled={busy}
             onChange={(event) => setName(event.target.value)}
             placeholder="Nom du dossier"
           />
           <div className="flex gap-2">
-            <Button type="submit" size="sm" disabled={pending}>
+            <Button type="submit" size="sm" disabled={busy}>
               {pending ? <Loader2 className="animate-spin" /> : "Créer"}
             </Button>
             <Button
               type="button"
               size="sm"
               variant="ghost"
-              disabled={pending}
+              disabled={busy}
               onClick={closeForm}
             >
               Annuler

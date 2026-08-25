@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
    Download,
    Eraser,
@@ -24,6 +24,7 @@ import {
    getFileDownloadUrl,
    getFileObjectUrl,
    getFilePreviewUrl,
+   listSelectionTargets,
    renameFile,
    renameFolder,
    restoreFile,
@@ -520,6 +521,7 @@ export function DriveList({
    galleryMode = false,
    smartFolderMode = false,
    smartFolder = null,
+   favoritesMode = false,
    searchQuery = "",
    debouncedSearchQuery = "",
    onSearchMetaChange,
@@ -527,6 +529,8 @@ export function DriveList({
    crossSpaceMode = false,
    recentDays = null,
    favoritesOnly = false,
+   selectAllRef = null,
+   onSelectingAllChange,
 }) {
    const router = useRouter();
    const dnd = useDriveDndOptional();
@@ -536,25 +540,30 @@ export function DriveList({
    const [infoItem, setInfoItem] = useState(null);
    const [renameItem, setRenameItem] = useState(null);
    const [selectedKeys, setSelectedKeys] = useState(() => new Set());
+   const [selectedCatalog, setSelectedCatalog] = useState(() => new Map());
    const [selectionAnchor, setSelectionAnchor] = useState(null);
+   const [selectingAll, setSelectingAll] = useState(false);
+   const [serverSelectionTotal, setServerSelectionTotal] = useState(null);
+
+   const spaceWideMode = galleryMode || smartFolderMode || favoritesMode;
 
    const folderBrowseMode =
-      view === "browse" && !galleryMode && !smartFolderMode && !crossSpaceMode;
+      view === "browse" && !spaceWideMode && !crossSpaceMode;
 
    const infiniteBrowse =
       view === "recent" ||
       view === "orphans" ||
       view === "untagged" ||
       view === "duplicates" ||
-      (view === "browse" && (galleryMode || smartFolderMode)) ||
+      (view === "browse" && spaceWideMode) ||
       folderBrowseMode;
 
    const serverSearchActive =
-      (folderBrowseMode || galleryMode || smartFolderMode) &&
+      (folderBrowseMode || spaceWideMode) &&
       (debouncedSearchQuery.trim().length > 0 || favoritesOnly);
 
    const browseFolderId =
-      galleryMode || smartFolderMode || crossSpaceMode ? null : folderId;
+      spaceWideMode || crossSpaceMode ? null : folderId;
 
    const {
       files: galleryFiles,
@@ -672,6 +681,22 @@ export function DriveList({
          }
          return next;
       });
+
+      if (favoritesOnly && !isFavorite) {
+         const key = itemSelectionKey({ kind: "file", id: fileId });
+         setSelectedKeys((current) => {
+            if (!current.has(key)) return current;
+            const next = new Set(current);
+            next.delete(key);
+            return next;
+         });
+         setSelectedCatalog((current) => {
+            if (!current.has(key)) return current;
+            const next = new Map(current);
+            next.delete(key);
+            return next;
+         });
+      }
    }
 
    const isGridLayout = layout === "grid" || layout === "compact";
@@ -706,20 +731,116 @@ export function DriveList({
       return [...folderItems, ...fileItems];
    }, [visibleFolders, visibleFiles, view, space, isGridLayout, crossSpaceMode]);
 
-   const itemsSignature = useMemo(
-      () => items.map((item) => itemSelectionKey(item)).join("|"),
-      [items],
-   );
-
    useEffect(() => {
       setSelectedKeys(new Set());
+      setSelectedCatalog(new Map());
       setSelectionAnchor(null);
-   }, [itemsSignature, view]);
+      setServerSelectionTotal(null);
+   }, [
+      view,
+      space,
+      folderId,
+      smartFolder?.id,
+      favoritesMode,
+      favoritesOnly,
+      debouncedSearchQuery,
+      recentDays,
+      crossSpaceMode,
+      galleryMode,
+      smartFolderMode,
+   ]);
+
+   function toSelectionStub(item) {
+      return {
+         kind: item.kind,
+         id: item.id,
+         space: item.space || space,
+         name: item.name,
+         mime_type: item.mime_type || null,
+      };
+   }
+
+   const selectAllFromServer = useCallback(async () => {
+      if (selectingAll) return;
+
+      setSelectingAll(true);
+      try {
+         const result = await listSelectionTargets({
+            space,
+            folderId: browseFolderId,
+            tag: smartFolderMode ? smartFolder?.tag : null,
+            imagesOnly: smartFolderMode,
+            search: debouncedSearchQuery,
+            favoritesOnly,
+            includeFolders: folderBrowseMode && !isGridLayout,
+            view: crossSpaceMode ? view : "browse",
+            recentDays,
+         });
+
+         if (!result?.success) {
+            toast.error(
+               result?.error || "Impossible de tout sélectionner.",
+            );
+            return;
+         }
+
+         const stubs = (result.data || []).map((item) => ({
+            ...item,
+            kind: item.kind,
+         }));
+         const nextKeys = new Set();
+         const nextCatalog = new Map();
+         for (const stub of stubs) {
+            const key = itemSelectionKey(stub);
+            nextKeys.add(key);
+            nextCatalog.set(key, stub);
+         }
+         setSelectedKeys(nextKeys);
+         setSelectedCatalog(nextCatalog);
+         setServerSelectionTotal(nextKeys.size);
+         setSelectionAnchor(null);
+      } finally {
+         setSelectingAll(false);
+      }
+   }, [
+      selectingAll,
+      space,
+      browseFolderId,
+      smartFolderMode,
+      smartFolder?.tag,
+      debouncedSearchQuery,
+      favoritesOnly,
+      folderBrowseMode,
+      isGridLayout,
+      crossSpaceMode,
+      view,
+      recentDays,
+   ]);
+
+   useEffect(() => {
+      onSelectingAllChange?.(selectingAll);
+   }, [selectingAll, onSelectingAllChange]);
+
+   useEffect(() => {
+      if (!selectAllRef) return;
+      selectAllRef.current = {
+         selectAll: selectAllFromServer,
+         selectingAll,
+         selectedCount: selectedKeys.size,
+      };
+      return () => {
+         if (selectAllRef.current?.selectAll === selectAllFromServer) {
+            selectAllRef.current = null;
+         }
+      };
+   }, [selectAllRef, selectAllFromServer, selectingAll, selectedKeys.size]);
 
    useEffect(() => {
       function onKeyDown(event) {
          if (event.key === "Escape" && selectedKeys.size) {
             setSelectedKeys(new Set());
+            setSelectedCatalog(new Map());
+            setServerSelectionTotal(null);
             setSelectionAnchor(null);
             return;
          }
@@ -750,20 +871,19 @@ export function DriveList({
 
          if (
             (event.metaKey || event.ctrlKey) &&
-            event.key.toLowerCase() === "a" &&
-            items.length
+            event.key.toLowerCase() === "a"
          ) {
             if (inField) {
                return;
             }
             event.preventDefault();
-            setSelectedKeys(new Set(items.map(itemSelectionKey)));
+            selectAllFromServer();
          }
       }
 
       window.addEventListener("keydown", onKeyDown);
       return () => window.removeEventListener("keydown", onKeyDown);
-   }, [items, selectedKeys.size, view, lightbox]);
+   }, [selectedKeys.size, view, lightbox, selectAllFromServer]);
 
    function openLightbox(payload) {
       const fileId = payload.fileId;
@@ -801,15 +921,20 @@ export function DriveList({
 
    function clearSelection() {
       setSelectedKeys(new Set());
+      setSelectedCatalog(new Map());
+      setServerSelectionTotal(null);
       setSelectionAnchor(null);
    }
 
    function selectAll() {
-      setSelectedKeys(new Set(items.map(itemSelectionKey)));
+      selectAllFromServer();
    }
 
-   function applySelection(nextKeys, anchorIndex) {
+   function applySelection(nextKeys, anchorIndex, catalogUpdates = null) {
       setSelectedKeys(nextKeys);
+      if (catalogUpdates) {
+         setSelectedCatalog(catalogUpdates);
+      }
       if (typeof anchorIndex === "number") {
          setSelectionAnchor(anchorIndex);
       }
@@ -817,22 +942,34 @@ export function DriveList({
 
    function toggleItemSelection(item, index, event) {
       const key = itemSelectionKey(item);
+      const stub = toSelectionStub(item);
 
       if (event?.shiftKey && selectionAnchor != null) {
          const start = Math.min(selectionAnchor, index);
          const end = Math.max(selectionAnchor, index);
          const next = new Set(selectedKeys);
+         const nextCatalog = new Map(selectedCatalog);
          for (let i = start; i <= end; i += 1) {
-            next.add(itemSelectionKey(items[i]));
+            const rangeItem = items[i];
+            if (!rangeItem) continue;
+            const rangeKey = itemSelectionKey(rangeItem);
+            next.add(rangeKey);
+            nextCatalog.set(rangeKey, toSelectionStub(rangeItem));
          }
-         applySelection(next);
+         applySelection(next, undefined, nextCatalog);
          return;
       }
 
       const next = new Set(selectedKeys);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      applySelection(next, index);
+      const nextCatalog = new Map(selectedCatalog);
+      if (next.has(key)) {
+         next.delete(key);
+         nextCatalog.delete(key);
+      } else {
+         next.add(key);
+         nextCatalog.set(key, stub);
+      }
+      applySelection(next, index, nextCatalog);
    }
 
    function onItemPointerSelect(event, item, index) {
@@ -843,9 +980,31 @@ export function DriveList({
       return true;
    }
 
-   const selectedItems = items.filter((item) =>
-      selectedKeys.has(itemSelectionKey(item)),
-   );
+   const selectedItems = useMemo(() => {
+      const result = [];
+      for (const key of selectedKeys) {
+         const fromCatalog = selectedCatalog.get(key);
+         if (fromCatalog) {
+            result.push(fromCatalog);
+            continue;
+         }
+         const loaded = items.find(
+            (item) => itemSelectionKey(item) === key,
+         );
+         if (loaded) result.push(toSelectionStub(loaded));
+      }
+      return result;
+   }, [selectedKeys, selectedCatalog, items, space]);
+
+   const selectionAllCount =
+      serverSelectionTotal ??
+      Math.max(
+         selectedItems.length,
+         (folderBrowseMode && !isGridLayout
+            ? visibleFolders.length
+            : 0) + (galleryTotal || visibleFiles.length || 0),
+         items.length,
+      );
    const hasSelection = selectedKeys.size > 0;
    const canDrag =
       view === "browse" ||
@@ -855,7 +1014,7 @@ export function DriveList({
       view === "duplicates";
 
    const bulkSourceFolderId =
-      view === "browse" && !galleryMode && !smartFolderMode && !crossSpaceMode
+      view === "browse" && !spaceWideMode && !crossSpaceMode
          ? folderId
          : null;
 
@@ -881,7 +1040,7 @@ export function DriveList({
          space: item.space || space,
          items: getDragItems(item),
          sourceFolderId:
-            galleryMode || smartFolderMode || crossSpaceMode ? null : folderId,
+            spaceWideMode || crossSpaceMode ? null : folderId,
       });
    }
 
@@ -1113,7 +1272,7 @@ export function DriveList({
          <BulkActionBar
             view={view}
             selectedItems={selectedItems}
-            allCount={items.length}
+            allCount={selectionAllCount}
             sourceFolderId={bulkSourceFolderId}
             onClear={clearSelection}
             onSelectAll={selectAll}
@@ -1177,10 +1336,14 @@ export function DriveList({
                >
                   <SelectionCheckbox
                      selected={
-                        items.length > 0 && selectedKeys.size === items.length
+                        selectionAllCount > 0 &&
+                        selectedKeys.size >= selectionAllCount
                      }
                      onChange={() => {
-                        if (selectedKeys.size === items.length)
+                        if (
+                           selectionAllCount > 0 &&
+                           selectedKeys.size >= selectionAllCount
+                        )
                            clearSelection();
                         else selectAll();
                      }}

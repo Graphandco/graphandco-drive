@@ -16,6 +16,7 @@ export {
   getFile,
   listFiles,
   listFilesPaginated,
+  listSelectionTargets,
   createFileRecord,
   renameFile,
   toggleFileFavorite,

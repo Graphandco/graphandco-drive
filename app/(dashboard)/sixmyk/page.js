@@ -11,6 +11,7 @@ export default async function SixMykPage({ searchParams }) {
       space="sixmyk"
       folderId={params?.folder}
       smartFolderId={params?.smart}
+      favoritesMode={params?.favorites === "1" || params?.favorites === "true"}
       openFileId={params?.file}
       view="browse"
     />

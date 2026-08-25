@@ -444,6 +444,10 @@ export async function listFilesPaginated({
           offset: pageOffset,
           hasMore: pageOffset + rows.length < total,
         },
+        stats: {
+          fileCount: total,
+          totalBytes: stats.totalBytes,
+        },
       };
     }
 
@@ -485,6 +489,144 @@ export async function listFilesPaginated({
       error: error?.message || "Impossible de lister les fichiers.",
       data: [],
       pagination: { total: 0, limit: FILES_PAGE_SIZE, offset: 0, hasMore: false },
+    };
+  }
+}
+
+/**
+ * Tous les éléments sélectionnables du contexte courant (sans pagination).
+ * Retourne des stubs légers pour les actions bulk hors lazy-load.
+ */
+export async function listSelectionTargets({
+  space = "sixmyk",
+  folderId = null,
+  tag = null,
+  imagesOnly = false,
+  search = null,
+  favoritesOnly = false,
+  includeFolders = false,
+  view = "browse",
+  recentDays = null,
+} = {}) {
+  try {
+    const normalizedTag = String(tag || "").trim();
+    const normalizedSearch = String(search || "").trim();
+    const tagFilter = tagFilterClause(normalizedTag);
+    const searchFilter = searchFilterClause(normalizedSearch);
+    const imageFilter = imagesOnly ? "AND f.mime_type LIKE 'image/%'" : "";
+    const favoriteFilter = favoritesOnly ? "AND f.is_favorite = 1" : "";
+    const targets = [];
+
+    if (includeFolders && view === "browse" && folderId != null && !normalizedTag) {
+      const folderRows = await query(
+        `SELECT id, space, name
+         FROM folders
+         WHERE parent_id = ?
+           AND deleted_at IS NULL
+         ORDER BY name ASC`,
+        [Number(folderId)]
+      );
+      for (const row of folderRows) {
+        targets.push({
+          kind: "folder",
+          id: row.id,
+          space: row.space || space,
+          name: row.name,
+          mime_type: null,
+        });
+      }
+    }
+
+    let fileRows = [];
+
+    if (view === "recent") {
+      const days = resolveRecentDays(recentDays);
+      fileRows = await query(
+        `SELECT f.id, f.space, f.name, f.mime_type
+         FROM files f
+         WHERE f.deleted_at IS NULL
+           AND f.updated_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+           ${searchFilter.sql}
+         ORDER BY f.updated_at DESC, f.created_at DESC`,
+        [days, ...searchFilter.params]
+      );
+    } else if (view === "orphans") {
+      fileRows = await query(
+        `SELECT f.id, f.space, f.name, f.mime_type
+         FROM files f
+         WHERE f.deleted_at IS NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM file_folders ff WHERE ff.file_id = f.id
+           )
+           ${searchFilter.sql}
+         ORDER BY f.updated_at DESC, f.name ASC`,
+        [...searchFilter.params]
+      );
+    } else if (view === "untagged") {
+      fileRows = await query(
+        `SELECT f.id, f.space, f.name, f.mime_type
+         FROM files f
+         WHERE f.deleted_at IS NULL
+           AND (f.tags IS NULL OR TRIM(f.tags) = '')
+           ${searchFilter.sql}
+         ORDER BY f.updated_at DESC, f.name ASC`,
+        [...searchFilter.params]
+      );
+    } else if (view === "duplicates") {
+      fileRows = await query(
+        `SELECT f.id, f.space, f.name, f.mime_type
+         FROM files f
+         ${DUPLICATES_JOIN}
+         WHERE f.deleted_at IS NULL
+           ${searchFilter.sql}
+         ORDER BY f.space ASC, f.name ASC, f.size_bytes ASC, f.updated_at DESC`,
+        [...searchFilter.params]
+      );
+    } else if (normalizedTag || folderId == null) {
+      fileRows = await query(
+        `SELECT f.id, f.space, f.name, f.mime_type
+         FROM files f
+         WHERE f.space = ?
+           AND f.deleted_at IS NULL
+           ${imageFilter}
+           ${favoriteFilter}
+           ${tagFilter.sql}
+           ${searchFilter.sql}
+         ${FILE_ORDER_BROWSE}`,
+        [space, ...tagFilter.params, ...searchFilter.params]
+      );
+    } else {
+      fileRows = await query(
+        `SELECT f.id, f.space, f.name, f.mime_type
+         FROM files f
+         INNER JOIN file_folders ff ON ff.file_id = f.id
+         WHERE ff.folder_id = ?
+           AND f.deleted_at IS NULL
+           ${imageFilter}
+           ${favoriteFilter}
+           ${searchFilter.sql}
+         ${FILE_ORDER_BROWSE}`,
+        [Number(folderId), ...searchFilter.params]
+      );
+    }
+
+    for (const row of fileRows) {
+      targets.push({
+        kind: "file",
+        id: row.id,
+        space: row.space || space,
+        name: row.name,
+        mime_type: row.mime_type,
+      });
+    }
+
+    return { success: true, data: targets };
+  } catch (error) {
+    console.error("listSelectionTargets:", error);
+    return {
+      success: false,
+      error: error?.message || "Impossible de charger la sélection.",
+      data: [],
     };
   }
 }
@@ -624,8 +766,6 @@ export async function toggleFileFavorite(fileId) {
       next,
       Number(fileId),
     ]);
-
-    revalidateDrive(existing.data.space);
 
     return {
       success: true,

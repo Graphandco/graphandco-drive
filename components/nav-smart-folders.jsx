@@ -3,7 +3,15 @@
 import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { ChevronRight, FolderSearch, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
+import {
+  ChevronRight,
+  FolderSearch,
+  Heart,
+  Pencil,
+  Plus,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { deleteSmartFolder } from "@/actions";
@@ -24,7 +32,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { useActiveBucket } from "@/hooks/use-active-bucket";
-import { smartFolderHref } from "@/lib/drive";
+import { favoritesHref, smartFolderHref } from "@/lib/drive";
 import { cn } from "@/lib/utils";
 
 export function NavSmartFolders({ buckets = [], smartFolders = [] }) {
@@ -39,17 +47,24 @@ export function NavSmartFolders({ buckets = [], smartFolders = [] }) {
 
   const spaceKey = active?.space || active?.url?.replace(/^\//, "");
   const activeSmartId = searchParams.get("smart");
+  const favoritesActive =
+    pathname === active?.url &&
+    (searchParams.get("favorites") === "1" ||
+      searchParams.get("favorites") === "true");
+  const favoritesUrl = spaceKey ? favoritesHref(spaceKey) : "#";
 
   const foldersForSpace = useMemo(
     () => smartFolders.filter((entry) => entry.space === spaceKey),
     [smartFolders, spaceKey]
   );
 
-  const hasActiveSmartFolder = foldersForSpace.some(
-    (folder) =>
-      pathname === active?.url &&
-      String(activeSmartId) === String(folder.id)
-  );
+  const hasActiveSmartFolder =
+    favoritesActive ||
+    foldersForSpace.some(
+      (folder) =>
+        pathname === active?.url &&
+        String(activeSmartId) === String(folder.id)
+    );
 
   if (!active || !spaceKey) return null;
 
@@ -91,6 +106,22 @@ export function NavSmartFolders({ buckets = [], smartFolders = [] }) {
           </SidebarGroupLabel>
           <CollapsibleContent>
             <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  tooltip="Favoris"
+                  isActive={favoritesActive}
+                  className={cn(favoritesActive && "text-primary")}
+                >
+                  <Link href={favoritesUrl}>
+                    <Heart
+                      className={cn(favoritesActive && "fill-current")}
+                    />
+                    <span className="truncate">Favoris</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
               {foldersForSpace.map((folder) => {
                 const href = smartFolderHref(spaceKey, folder.id);
                 const isActive =
