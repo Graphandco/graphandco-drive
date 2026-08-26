@@ -20,7 +20,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-   title: "Graph & Co Drive",
+   title: "Graph & Photos",
    description: "Espace de fichiers Graph & Co",
 };
 

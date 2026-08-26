@@ -89,6 +89,8 @@ export function DuplicatesPanel({
       index,
       fileId: payload.fileId,
       src: payload.src || null,
+      thumbSrc: payload.thumbSrc || null,
+      originRect: payload.originRect || null,
       groupItems: images,
     });
   }
@@ -215,7 +217,12 @@ export function DuplicatesPanel({
         images={lightboxImages}
         seed={
           lightbox?.src && lightbox?.fileId
-            ? { src: lightbox.src, fileId: lightbox.fileId }
+            ? {
+                src: lightbox.src,
+                fileId: lightbox.fileId,
+                thumbSrc: lightbox.thumbSrc || null,
+                originRect: lightbox.originRect || null,
+              }
             : null
         }
         onClose={() => setLightbox(null)}

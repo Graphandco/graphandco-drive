@@ -102,7 +102,7 @@ function TrashActions({ item, pending, onRestore, onDeleteForever }) {
    );
 }
 
-function ItemInfoButton({ onClick, pending, compact, overlay = true }) {
+function ItemInfoButton({ onClick, pending, compact, overlay = true, className }) {
    return (
       <Button
          type="button"
@@ -114,6 +114,7 @@ function ItemInfoButton({ onClick, pending, compact, overlay = true }) {
             "shrink-0",
             overlay &&
                "border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white",
+            className,
          )}
          onClick={(event) => {
             event.stopPropagation();
@@ -328,19 +329,24 @@ function DriveGridItem({
             }}
          >
             {isFile ? (
-               <div className="absolute top-1.5 right-1.5 z-20">
-                  <FavoriteButton
-                     file={item}
-                     compact={compact}
-                     onChanged={onFavoriteChanged}
-                  />
-               </div>
+               <>
+                  <div className="absolute top-1.5 right-1.5 z-20 hidden sm:block">
+                     <FavoriteButton
+                        file={item}
+                        compact={compact}
+                        onChanged={onFavoriteChanged}
+                     />
+                  </div>
+                  <div className="absolute top-1 right-1 z-20 sm:hidden">
+                     <FavoriteButton file={item} interactive={false} />
+                  </div>
+               </>
             ) : null}
 
             <div className="h-full w-full">
                <FileThumbnail
                   file={item}
-                  onOpen={hasSelection ? undefined : openLightbox}
+                  onOpen={openLightbox}
                   fit="cell"
                />
             </div>
@@ -350,6 +356,7 @@ function DriveGridItem({
                   compact
                      ? "pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/85 via-black/55 to-transparent px-1 pt-4 pb-1 transition-opacity"
                      : "pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/80 via-black/50 to-transparent px-2.5 pt-6 pb-2 transition-opacity",
+                  "hidden sm:block",
                   selected || hasSelection
                      ? "opacity-100"
                      : "opacity-0 group-hover:opacity-100",
@@ -915,6 +922,8 @@ export function DriveList({
          index: index >= 0 ? index : 0,
          fileId,
          src: payload.src || null,
+         thumbSrc: payload.thumbSrc || null,
+         originRect: payload.originRect || null,
          title: payload.title || null,
       });
    }
@@ -1219,10 +1228,19 @@ export function DriveList({
             images={imageItems}
             seed={
                lightbox?.src && lightbox?.fileId
-                  ? { src: lightbox.src, fileId: lightbox.fileId }
+                  ? {
+                       src: lightbox.src,
+                       fileId: lightbox.fileId,
+                       thumbSrc: lightbox.thumbSrc || null,
+                       originRect: lightbox.originRect || null,
+                    }
                   : null
             }
             onClose={() => setLightbox(null)}
+            onInfo={(file) => {
+               if (file) openInfo(file);
+            }}
+            onFavoriteChanged={onFavoriteChanged}
             onIndexChange={(nextIndex) => {
                const file = imageItems[nextIndex];
                setLightbox((current) =>

@@ -1,104 +1,84 @@
-/* Backdrop séparé (body) — backdrop-filter ne fonctionne pas dans le portal YARL */
+/* Backdrop flou + image flottante (pas de cadre noir) */
 .graphand-lightbox-backdrop {
-   position: fixed;
-   inset: 0;
-   z-index: 9998;
-   pointer-events: none;
-   background-color: rgb(0 0 0 / 0.32);
-   -webkit-backdrop-filter: blur(16px) saturate(120%);
-   backdrop-filter: blur(4px) saturate(120%);
-   opacity: 0;
-   transition: opacity 220ms ease;
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
+  background-color: rgb(0 0 0 / 0.32);
+  -webkit-backdrop-filter: blur(16px) saturate(120%);
+  backdrop-filter: blur(16px) saturate(120%);
 }
 
-.graphand-lightbox-backdrop--open {
-   opacity: 1;
+.graphand-lightbox-portal {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  cursor: pointer;
 }
 
-/* Lightbox 90 % viewport — contenu centré, portal transparent */
-.graphand-lightbox.yarl__portal {
-   display: flex;
-   align-items: center;
-   justify-content: center;
-   overflow: visible !important;
-   background: transparent !important;
-   cursor: pointer;
-   opacity: 1 !important;
-   transition: none !important;
+.graphand-lightbox-chrome {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  pointer-events: none;
 }
 
-.graphand-lightbox.yarl__portal .yarl__container {
-   cursor: default;
-   position: relative;
-   z-index: 1;
+.graphand-lightbox-chrome .graphand-lightbox__close-zone,
+.graphand-lightbox-chrome .graphand-lightbox-nav,
+.graphand-lightbox-chrome .graphand-lightbox-actions {
+  pointer-events: auto;
 }
 
-.graphand-lightbox .yarl__container {
-   top: auto;
-   right: auto;
-   bottom: auto;
-   left: auto;
-   width: 90vw;
-   height: 90vh;
-   max-width: 90vw;
-   max-height: 90vh;
-   border-radius: 0.75rem;
-   overflow: hidden;
-   background-color: rgb(0 0 0 / 0.96);
-   box-shadow: 0 24px 80px rgb(0 0 0 / 0.45);
+.graphand-lightbox-image {
+  position: fixed;
+  z-index: 9999;
+  display: block;
+  margin: 0;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+  cursor: default;
+  touch-action: none;
+  will-change: top, left, width, height, transform;
+  box-shadow: 0 20px 60px rgb(0 0 0 / 0.35);
 }
 
-.graphand-lightbox .yarl__toolbar {
-   padding: 0;
-   gap: 0;
-   cursor: default;
-   filter: none;
+.graphand-lightbox-nav {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  display: flex;
+  width: 52px;
+  height: 52px;
+  translate: 0 -50%;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  background: rgb(0 0 0 / 0.45);
+  color: white;
+  cursor: pointer;
 }
 
-/* Pas de boutons loupe zoom dans la toolbar */
-.graphand-lightbox .yarl__toolbar .yarl__button {
-   display: none !important;
+.graphand-lightbox-nav--prev {
+  left: 1.75rem;
 }
 
-.graphand-lightbox .yarl__toolbar .graphand-lightbox__close-zone,
-.graphand-lightbox .yarl__toolbar .graphand-lightbox__close-zone * {
-   cursor: pointer !important;
+.graphand-lightbox-nav--next {
+  right: 1.75rem;
 }
 
-.graphand-lightbox .yarl__navigation_prev,
-.graphand-lightbox .yarl__navigation_next {
-   width: 52px;
-   height: 52px;
-   padding: 8px;
-   border-radius: 9999px;
-   background: rgb(0 0 0 / 0.45);
-   border: 1px solid rgb(255 255 255 / 0.18);
+.graphand-lightbox-nav:hover {
+  background: rgb(0 0 0 / 0.65);
 }
 
-.graphand-lightbox .yarl__navigation_prev {
-   left: 1.75rem;
-}
-
-.graphand-lightbox .yarl__navigation_next {
-   right: 1.75rem;
-}
-
-.graphand-lightbox .yarl__navigation_prev .yarl__icon,
-.graphand-lightbox .yarl__navigation_next .yarl__icon {
-   width: 28px;
-   height: 28px;
+.graphand-lightbox-nav:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 @media (max-width: 640px) {
-   .graphand-lightbox .yarl__container {
-      width: 94vw;
-      height: 90vh;
-      max-width: 94vw;
-      border-radius: 0.5rem;
-   }
-
-   .graphand-lightbox .yarl__navigation_prev,
-   .graphand-lightbox .yarl__navigation_next {
-      display: none;
-   }
+  .graphand-lightbox-nav {
+    display: none;
+  }
 }

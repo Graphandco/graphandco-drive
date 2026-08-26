@@ -108,13 +108,28 @@ export function FileThumbnail({
     };
   }, [visible, file.id, file.storage_key, file.thumbnail_key, showImage]);
 
-  async function handleOpen() {
+  async function handleOpen(event) {
     if (!onOpen || opening) return;
+    const trigger = event.currentTarget;
+    const img = trigger.querySelector("img");
+    const box = (img || trigger).getBoundingClientRect();
+    const originRect = {
+      top: box.top,
+      left: box.left,
+      width: box.width,
+      height: box.height,
+    };
     setOpening(true);
     try {
       const result = await getFilePreviewUrl(file.id);
       if (result.success && result.data?.url) {
-        onOpen({ src: result.data.url, title: file.name, fileId: file.id });
+        onOpen({
+          src: result.data.url,
+          thumbSrc: src || null,
+          title: file.name,
+          fileId: file.id,
+          originRect,
+        });
       } else {
         toast.error(result.error || "Impossible d’ouvrir le fichier.");
       }

@@ -15,6 +15,9 @@ function isFavoriteValue(value) {
 export function FavoriteButton({
   file,
   compact = false,
+  alwaysVisible = false,
+  interactive = true,
+  variant = "grid",
   className,
   onChanged,
 }) {
@@ -22,11 +25,12 @@ export function FavoriteButton({
   const [optimistic, setOptimistic] = useState(null);
   const favorite =
     optimistic != null ? optimistic : isFavoriteValue(file?.is_favorite);
+  const lightbox = variant === "lightbox";
 
   function onToggle(event) {
     event.preventDefault();
     event.stopPropagation();
-    if (!file?.id || pending) return;
+    if (!interactive || !file?.id || pending) return;
 
     const next = !favorite;
     setOptimistic(next);
@@ -43,6 +47,21 @@ export function FavoriteButton({
     });
   }
 
+  if (!interactive) {
+    if (!favorite) return null;
+    return (
+      <span
+        aria-hidden
+        className={cn(
+          "pointer-events-none inline-flex size-6 items-center justify-center rounded-full bg-black/55 text-red-500 shadow-sm",
+          className,
+        )}
+      >
+        <Heart className="size-3" fill="currentColor" />
+      </span>
+    );
+  }
+
   return (
     <Button
       type="button"
@@ -53,16 +72,26 @@ export function FavoriteButton({
       aria-pressed={favorite}
       data-item-actions
       className={cn(
-        "pointer-events-auto shrink-0 border-0 bg-black/55 text-white shadow-sm hover:bg-black/70 hover:text-white",
-        favorite && "bg-black/60 text-red-500 hover:text-red-400",
-        !favorite && "opacity-0 group-hover:opacity-100",
-        favorite && "opacity-100",
-        className
+        "pointer-events-auto shrink-0 border-0 shadow-sm",
+        lightbox
+          ? cn(
+              "size-8 bg-white text-black hover:bg-white/90 hover:text-black",
+              favorite && "text-red-500 hover:text-red-500",
+            )
+          : cn(
+              "bg-black/55 text-white hover:bg-black/70 hover:text-white",
+              favorite && "bg-black/60 text-red-500 hover:text-red-400",
+              !alwaysVisible && !favorite && "opacity-0 group-hover:opacity-100",
+              (alwaysVisible || favorite) && "opacity-100",
+            ),
+        className,
       )}
       onClick={onToggle}
     >
       <Heart
-        className={compact ? "size-3.5" : "size-4"}
+        className={cn(
+          lightbox ? "size-3.5" : compact ? "size-3" : "size-4",
+        )}
         fill={favorite ? "currentColor" : "none"}
       />
     </Button>
