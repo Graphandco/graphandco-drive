@@ -165,7 +165,16 @@ function FolderNodes({ nodes }) {
             className="group/folder"
           >
             <SidebarMenuSubItem>
-              <div className="flex w-full items-center">
+              <div className="flex w-full items-center gap-0.5">
+                <FolderDropLink
+                  node={node}
+                  href={href}
+                  active={active}
+                  className="min-w-0 flex-1"
+                >
+                  <Folder />
+                  <span>{node.name}</span>
+                </FolderDropLink>
                 <CollapsibleTrigger asChild>
                   <button
                     type="button"
@@ -175,15 +184,6 @@ function FolderNodes({ nodes }) {
                     <ChevronRight className="size-3.5 transition-transform group-data-[state=open]/folder:rotate-90" />
                   </button>
                 </CollapsibleTrigger>
-                <FolderDropLink
-                  node={node}
-                  href={href}
-                  active={active}
-                  className="flex-1"
-                >
-                  <Folder />
-                  <span>{node.name}</span>
-                </FolderDropLink>
               </div>
               <CollapsibleContent>
                 <FolderNodes nodes={node.children} />
