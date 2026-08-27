@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ChevronLeft, ChevronRight, Info, Share2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Info, Share2, Volume2, VolumeX, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { getFilePreviewUrl } from "@/actions";
 import { FavoriteButton } from "@/components/drive/favorite-button";
+import { isVideoFile } from "@/lib/mime";
 import { getCachedThumbnailUrl } from "@/lib/thumbnail-loader";
 import { shareOrDownloadFile } from "@/lib/share-file";
 import { cn } from "@/lib/utils";
@@ -53,6 +54,11 @@ function getAspect(file, originRect) {
    }
    if (originRect?.width > 0 && originRect?.height > 0) {
       return originRect.width / originRect.height;
+   }
+   if (
+      isVideoFile({ mimeType: file?.mime_type, name: file?.name })
+   ) {
+      return 16 / 9;
    }
    return 4 / 3;
 }
@@ -108,7 +114,7 @@ function LightboxActionButton({ label, onClick, children, className }) {
             onClick?.(event);
          }}
          className={cn(
-            "flex size-8 cursor-pointer items-center justify-center rounded-full",
+            "inline-flex size-8 cursor-pointer items-center justify-center rounded-full",
             "border-0 bg-white p-0 text-black shadow-md outline-none",
             "transition-colors duration-150 hover:bg-white/90",
             "focus-visible:ring-2 focus-visible:ring-white/40",
@@ -151,6 +157,9 @@ export function ImageLightbox({
    );
    const dragStartRef = useRef(null);
    const pinchRef = useRef(null);
+   const videoRef = useRef(null);
+   const [videoMuted, setVideoMuted] = useState(false);
+   const [showUnmuteHint, setShowUnmuteHint] = useState(false);
 
    useEffect(() => {
       setMounted(true);
@@ -170,6 +179,14 @@ export function ImageLightbox({
          originRectRef.current = null;
          setZoom(1);
          setPan({ x: 0, y: 0 });
+         setVideoMuted(false);
+         setShowUnmuteHint(false);
+         const video = videoRef.current;
+         if (video) {
+            video.pause();
+            video.removeAttribute("src");
+            video.load();
+         }
       }
    }, [open]);
 
@@ -181,6 +198,10 @@ export function ImageLightbox({
    useEffect(() => {
       setZoom(1);
       setPan({ x: 0, y: 0 });
+      setVideoMuted(false);
+      setShowUnmuteHint(false);
+      const video = videoRef.current;
+      if (video) video.pause();
    }, [index]);
 
    useEffect(() => {
@@ -254,13 +275,21 @@ export function ImageLightbox({
    );
    const currentFile = images[safeIndex] || null;
    const currentKey = currentFile ? String(currentFile.id) : null;
+   const isVideo = Boolean(
+      currentFile &&
+         isVideoFile({
+            mimeType: currentFile.mime_type,
+            name: currentFile.name,
+         }),
+   );
    const fullSrc = currentKey ? urls.get(currentKey) : null;
-   const displaySrc =
-      fullSrc ||
-      resolveFallbackSrc(
-         currentFile,
-         seed && String(seed.fileId) === currentKey ? seed.thumbSrc : null,
-      );
+   const displaySrc = isVideo
+      ? fullSrc || null
+      : fullSrc ||
+        resolveFallbackSrc(
+           currentFile,
+           seed && String(seed.fileId) === currentKey ? seed.thumbSrc : null,
+        );
 
    const isOpeningImage =
       Boolean(currentFile) &&
@@ -274,6 +303,60 @@ export function ImageLightbox({
          viewport.w < 640 ? 0.94 : VIEW_PADDING,
       );
    }, [currentFile, originRect, viewport.w, viewport.h]);
+
+   useEffect(() => {
+      if (!open || !isVideo || !fullSrc) return;
+      const video = videoRef.current;
+      if (!video) return;
+
+      let cancelled = false;
+
+      async function tryPlay() {
+         video.muted = false;
+         setVideoMuted(false);
+         setShowUnmuteHint(false);
+         try {
+            await video.play();
+            if (cancelled) return;
+         } catch {
+            if (cancelled) return;
+            video.muted = true;
+            setVideoMuted(true);
+            setShowUnmuteHint(true);
+            try {
+               await video.play();
+            } catch {
+               // Autoplay bloqué — contrôles natifs disponibles
+            }
+         }
+      }
+
+      if (video.readyState >= 2) {
+         tryPlay();
+         return () => {
+            cancelled = true;
+         };
+      }
+
+      const onReady = () => {
+         video.removeEventListener("loadeddata", onReady);
+         tryPlay();
+      };
+      video.addEventListener("loadeddata", onReady);
+      return () => {
+         cancelled = true;
+         video.removeEventListener("loadeddata", onReady);
+      };
+   }, [open, isVideo, fullSrc, currentKey]);
+
+   const unmuteVideo = useCallback(() => {
+      const video = videoRef.current;
+      if (!video) return;
+      video.muted = false;
+      setVideoMuted(false);
+      setShowUnmuteHint(false);
+      video.play().catch(() => {});
+   }, []);
 
    const goTo = useCallback(
       (nextIndex) => {
@@ -490,7 +573,7 @@ export function ImageLightbox({
                   className="graphand-lightbox-portal"
                   role="dialog"
                   aria-modal="true"
-                  aria-label={currentFile?.name || "Photo"}
+                  aria-label={currentFile?.name || (isVideo ? "Vidéo" : "Photo")}
                   onClick={handleOverlayClick}
                />
 
@@ -526,6 +609,21 @@ export function ImageLightbox({
                      </LightboxActionButton>
                   </div>
 
+                  {isVideo && showUnmuteHint ? (
+                     <LightboxActionButton
+                        label="Activer le son"
+                        onClick={unmuteVideo}
+                        className="absolute bottom-6 left-1/2 z-20 size-auto -translate-x-1/2 gap-2 px-3 py-2 sm:bottom-8"
+                     >
+                        {videoMuted ? (
+                           <VolumeX className="size-4" strokeWidth={2.25} />
+                        ) : (
+                           <Volume2 className="size-4" strokeWidth={2.25} />
+                        )}
+                        <span className="text-xs font-medium">Activer le son</span>
+                     </LightboxActionButton>
+                  ) : null}
+
                   <LightboxCloseButton
                      onClose={() => {
                         resetZoom();
@@ -557,74 +655,148 @@ export function ImageLightbox({
                   ) : null}
                </motion.div>
 
-               <motion.img
-                  key={
-                     isOpeningImage
-                        ? `morph-${currentKey}`
-                        : `slide-${currentKey}`
-                  }
-                  src={displaySrc}
-                  alt={currentFile?.name || "Photo"}
-                  draggable={false}
-                  className="graphand-lightbox-image"
-                  initial={
-                     isOpeningImage
-                        ? imageInitial
-                        : reduceMotion
-                          ? {
-                               top: targetRect.top,
-                               left: targetRect.left,
-                               width: targetRect.width,
-                               height: targetRect.height,
-                            }
-                          : {
-                               opacity: 0,
-                               x: 40,
-                               top: targetRect.top,
-                               left: targetRect.left,
-                               width: targetRect.width,
-                               height: targetRect.height,
-                            }
-                  }
-                  animate={{
-                     opacity: 1,
-                     x: 0,
-                     scale: zoom,
-                     top: targetRect.top + (zoom > 1.01 ? pan.y : 0),
-                     left: targetRect.left + (zoom > 1.01 ? pan.x : 0),
-                     width: targetRect.width,
-                     height: targetRect.height,
-                     borderRadius: 12,
-                  }}
-                  exit={
-                     isOpeningImage && originRect
-                        ? {
-                             top: originRect.top,
-                             left: originRect.left,
-                             width: originRect.width,
-                             height: originRect.height,
-                             borderRadius: 8,
-                             scale: 1,
-                             opacity: 1,
-                             x: 0,
-                          }
-                        : { opacity: 0, scale: 0.97 }
-                  }
-                  transition={{
-                     duration,
-                     ease: OPEN_EASE,
-                  }}
-                  onClick={(event) => event.stopPropagation()}
-                  onWheel={handleWheel}
-                  onDoubleClick={handleDoubleClick}
-                  onPointerDown={handlePointerDown}
-                  onPointerMove={handlePointerMove}
-                  onPointerUp={handlePointerUp}
-                  onPointerCancel={handlePointerUp}
-                  onTouchStart={handleTouchStart}
-                  onTouchMove={handleTouchMove}
-                  onTouchEnd={handleTouchEnd}
-               />
+               {isVideo ? (
+                  <motion.div
+                     key={`video-wrap-${currentKey}`}
+                     className="graphand-lightbox-video-wrap"
+                     initial={
+                        reduceMotion
+                           ? {
+                                top: targetRect.top,
+                                left: targetRect.left,
+                                width: targetRect.width,
+                                height: targetRect.height,
+                             }
+                           : isOpeningImage && originRect
+                             ? {
+                                  top: originRect.top,
+                                  left: originRect.left,
+                                  width: originRect.width,
+                                  height: originRect.height,
+                                  borderRadius: 8,
+                                  opacity: 1,
+                               }
+                             : {
+                                  opacity: 0,
+                                  scale: 0.96,
+                                  top: targetRect.top,
+                                  left: targetRect.left,
+                                  width: targetRect.width,
+                                  height: targetRect.height,
+                               }
+                     }
+                     animate={{
+                        opacity: 1,
+                        scale: 1,
+                        top: targetRect.top,
+                        left: targetRect.left,
+                        width: targetRect.width,
+                        height: targetRect.height,
+                        borderRadius: 12,
+                     }}
+                     exit={{ opacity: 0, scale: 0.97 }}
+                     transition={{ duration, ease: OPEN_EASE }}
+                     onClick={(event) => event.stopPropagation()}
+                  >
+                     {displaySrc ? (
+                        <video
+                           ref={videoRef}
+                           key={`video-${currentKey}`}
+                           className="graphand-lightbox-video"
+                           src={displaySrc}
+                           controls
+                           playsInline
+                           preload="auto"
+                           poster={
+                              seed &&
+                              String(seed.fileId) === currentKey &&
+                              seed.thumbSrc
+                                 ? seed.thumbSrc
+                                 : undefined
+                           }
+                        />
+                     ) : (
+                        <div className="flex size-full items-center justify-center">
+                           <span
+                              className={cn(
+                                 "inline-block size-8 animate-spin rounded-full",
+                                 "border-2 border-white/25 border-t-white",
+                              )}
+                              aria-hidden
+                           />
+                        </div>
+                     )}
+                  </motion.div>
+               ) : (
+                  <motion.img
+                     key={
+                        isOpeningImage
+                           ? `morph-${currentKey}`
+                           : `slide-${currentKey}`
+                     }
+                     src={displaySrc}
+                     alt={currentFile?.name || "Photo"}
+                     draggable={false}
+                     className="graphand-lightbox-image"
+                     initial={
+                        isOpeningImage
+                           ? imageInitial
+                           : reduceMotion
+                             ? {
+                                  top: targetRect.top,
+                                  left: targetRect.left,
+                                  width: targetRect.width,
+                                  height: targetRect.height,
+                               }
+                             : {
+                                  opacity: 0,
+                                  x: 40,
+                                  top: targetRect.top,
+                                  left: targetRect.left,
+                                  width: targetRect.width,
+                                  height: targetRect.height,
+                               }
+                     }
+                     animate={{
+                        opacity: 1,
+                        x: 0,
+                        scale: zoom,
+                        top: targetRect.top + (zoom > 1.01 ? pan.y : 0),
+                        left: targetRect.left + (zoom > 1.01 ? pan.x : 0),
+                        width: targetRect.width,
+                        height: targetRect.height,
+                        borderRadius: 12,
+                     }}
+                     exit={
+                        isOpeningImage && originRect
+                           ? {
+                                top: originRect.top,
+                                left: originRect.left,
+                                width: originRect.width,
+                                height: originRect.height,
+                                borderRadius: 8,
+                                scale: 1,
+                                opacity: 1,
+                                x: 0,
+                             }
+                           : { opacity: 0, scale: 0.97 }
+                     }
+                     transition={{
+                        duration,
+                        ease: OPEN_EASE,
+                     }}
+                     onClick={(event) => event.stopPropagation()}
+                     onWheel={handleWheel}
+                     onDoubleClick={handleDoubleClick}
+                     onPointerDown={handlePointerDown}
+                     onPointerMove={handlePointerMove}
+                     onPointerUp={handlePointerUp}
+                     onPointerCancel={handlePointerUp}
+                     onTouchStart={handleTouchStart}
+                     onTouchMove={handleTouchMove}
+                     onTouchEnd={handleTouchEnd}
+                  />
+               )}
             </>
          ) : null}
       </AnimatePresence>,

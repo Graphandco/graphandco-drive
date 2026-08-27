@@ -43,6 +43,22 @@
   box-shadow: 0 20px 60px rgb(0 0 0 / 0.35);
 }
 
+.graphand-lightbox-video-wrap {
+  position: fixed;
+  z-index: 9999;
+  overflow: hidden;
+  background: rgb(0 0 0 / 0.85);
+  box-shadow: 0 20px 60px rgb(0 0 0 / 0.35);
+}
+
+.graphand-lightbox-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
 .graphand-lightbox-nav {
   position: absolute;
   top: 50%;

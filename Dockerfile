@@ -15,7 +15,8 @@ RUN npm run build \
 # Runtime stage — image minimale via output standalone
 FROM node:20-alpine AS runner
 
-RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
+RUN apk add --no-cache ffmpeg \
+  && addgroup -S nodejs && adduser -S nextjs -G nodejs
 
 WORKDIR /app
 

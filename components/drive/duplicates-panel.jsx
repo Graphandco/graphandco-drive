@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { useInfiniteFiles } from "@/hooks/use-infinite-files";
 import { groupDuplicateFiles, spaceLabel } from "@/lib/duplicates";
 import { formatBytes, formatDate } from "@/lib/format";
-import { isImageFile } from "@/lib/mime";
+import { isMediaFile } from "@/lib/mime";
 
 export function DuplicatesPanel({
   initialFiles = [],
@@ -42,7 +42,7 @@ export function DuplicatesPanel({
   const lightboxImages = useMemo(
     () =>
       (lightbox?.groupItems || []).filter((file) =>
-        isImageFile({ mimeType: file.mime_type, name: file.name }),
+        isMediaFile({ mimeType: file.mime_type, name: file.name }),
       ),
     [lightbox?.groupItems],
   );
@@ -78,7 +78,7 @@ export function DuplicatesPanel({
 
   function openLightbox(payload, groupItems) {
     const images = groupItems.filter((file) =>
-      isImageFile({ mimeType: file.mime_type, name: file.name }),
+      isMediaFile({ mimeType: file.mime_type, name: file.name }),
     );
     const index = images.findIndex(
       (file) => String(file.id) === String(payload.fileId),
@@ -139,7 +139,7 @@ export function DuplicatesPanel({
                 <ul className="divide-y divide-white/5">
                   {group.items.map((file) => {
                     const pending = String(pendingId) === String(file.id);
-                    const isImage = isImageFile({
+                    const isMedia = isMediaFile({
                       mimeType: file.mime_type,
                       name: file.name,
                     });
@@ -155,7 +155,7 @@ export function DuplicatesPanel({
                               file={file}
                               fit="cover"
                               onOpen={
-                                isImage
+                                isMedia
                                   ? (payload) =>
                                       openLightbox(payload, group.items)
                                   : undefined

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { File, ImageIcon } from "lucide-react";
+import { File, Film, ImageIcon, Play } from "lucide-react";
 import { toast } from "sonner";
 
 import { getFilePreviewUrl, getFileThumbnailUrl } from "@/actions";
@@ -10,7 +10,7 @@ import {
   loadThumbnailUrl,
   preloadImage,
 } from "@/lib/thumbnail-loader";
-import { isImageFile } from "@/lib/mime";
+import { isImageFile, isVideoFile } from "@/lib/mime";
 import { cn } from "@/lib/utils";
 
 function cacheKey(file) {
@@ -41,6 +41,12 @@ export function FileThumbnail({
     mimeType: file.mime_type,
     name: file.name,
   });
+  const showVideo = isVideoFile({
+    mimeType: file.mime_type,
+    name: file.name,
+  });
+  const canOpenMedia = Boolean(onOpen) && (showImage || showVideo);
+  const loadThumb = showImage || (showVideo && Boolean(file.thumbnail_key));
 
   useEffect(() => {
     const el = rootRef.current;
@@ -66,7 +72,7 @@ export function FileThumbnail({
   }, []);
 
   useEffect(() => {
-    if (!visible || !showImage || !file.id || !file.storage_key) return;
+    if (!visible || !loadThumb || !file.id || !file.storage_key) return;
 
     const key = cacheKey(file);
     let cancelled = false;
@@ -106,13 +112,19 @@ export function FileThumbnail({
     return () => {
       cancelled = true;
     };
-  }, [visible, file.id, file.storage_key, file.thumbnail_key, showImage]);
+  }, [
+    visible,
+    file.id,
+    file.storage_key,
+    file.thumbnail_key,
+    loadThumb,
+  ]);
 
   async function handleOpen(event) {
     if (!onOpen || opening) return;
     const trigger = event.currentTarget;
-    const img = trigger.querySelector("img");
-    const box = (img || trigger).getBoundingClientRect();
+    const mediaEl = trigger.querySelector("img");
+    const box = (mediaEl || trigger).getBoundingClientRect();
     const originRect = {
       top: box.top,
       left: box.left,
@@ -141,7 +153,7 @@ export function FileThumbnail({
   const contain = fit === "contain";
   const masonry = fit === "masonry";
   const cell = fit === "cell";
-  const showPhoto = showImage && src && !failed;
+  const showPhoto = loadThumb && src && !failed;
 
   const placeholder = (
     <div
@@ -151,7 +163,9 @@ export function FileThumbnail({
         className
       )}
     >
-      {showImage ? (
+      {showVideo ? (
+        <Film className="size-8 opacity-70" />
+      ) : showImage ? (
         <ImageIcon className="size-8 opacity-70" />
       ) : (
         <File className="size-8 opacity-70" />
@@ -188,42 +202,49 @@ export function FileThumbnail({
     />
   ) : null;
 
-  const media = showPhoto ? (
-    onOpen ? (
+  const playBadge = showVideo ? (
+    <span
+      aria-hidden
+      className={cn(
+        "pointer-events-none absolute inset-0 z-10 flex items-center justify-center",
+      )}
+    >
+      <span className="flex size-10 items-center justify-center rounded-full bg-black/55 text-white shadow-md">
+        <Play className="size-4 fill-current" />
+      </span>
+    </span>
+  ) : null;
+
+  const frameClass = cn(
+    "overflow-hidden disabled:opacity-70",
+    masonry
+      ? "relative block w-full"
+      : cell
+        ? "absolute inset-0 size-full"
+        : contain
+        ? "relative h-full w-auto"
+        : "absolute inset-0 size-full"
+  );
+
+  let media = null;
+  if (canOpenMedia) {
+    media = (
       <button
         type="button"
-        className={cn(
-          "cursor-pointer overflow-hidden disabled:opacity-70",
-          masonry
-            ? "relative block w-full"
-            : cell
-              ? "absolute inset-0 size-full"
-              : contain
-              ? "relative h-full w-auto"
-              : "absolute inset-0 size-full"
-        )}
+        className={cn("cursor-pointer", frameClass)}
         onClick={handleOpen}
         disabled={opening}
-        aria-label={`Agrandir ${file.name}`}
-      >
-        {image}
-      </button>
-    ) : (
-      <div
-        className={
-          masonry
-            ? "relative block w-full"
-            : cell
-              ? "absolute inset-0 size-full"
-              : contain
-              ? "relative h-full w-auto"
-              : "absolute inset-0"
+        aria-label={
+          showVideo ? `Lire ${file.name}` : `Agrandir ${file.name}`
         }
       >
         {image}
-      </div>
-    )
-  ) : null;
+        {playBadge}
+      </button>
+    );
+  } else if (showPhoto) {
+    media = <div className={frameClass}>{image}</div>;
+  }
 
   return (
     <div
@@ -239,7 +260,7 @@ export function FileThumbnail({
           ? {
               aspectRatio: aspectRatio
                 ? String(aspectRatio)
-                : showImage
+                : showImage || showVideo
                   ? "4 / 3"
                   : "1 / 1",
             }

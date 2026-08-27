@@ -66,7 +66,7 @@ import {
 import { folderHref, getSpaceConfig, sortFilesByCaptureDate } from "@/lib/drive";
 import { filterDriveItems } from "@/lib/drive-search";
 import { formatBytes, formatDate } from "@/lib/format";
-import { isImageFile } from "@/lib/mime";
+import { isMediaFile } from "@/lib/mime";
 import { listItemDelay, listItemIn, listItemTransition } from "@/lib/motion";
 import { itemSelectionKey } from "@/lib/tags";
 import { cn } from "@/lib/utils";
@@ -653,7 +653,7 @@ export function DriveList({
    const imageItems = useMemo(
       () =>
          visibleFiles.filter((file) =>
-            isImageFile({ mimeType: file.mime_type, name: file.name }),
+            isMediaFile({ mimeType: file.mime_type, name: file.name }),
          ),
       [visibleFiles],
    );

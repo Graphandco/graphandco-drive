@@ -19,6 +19,8 @@ import {
   createThumbnailBuffer,
 } from "@/lib/thumbnail";
 import { extractCapturedAt, extractImageDimensions } from "@/lib/image-meta";
+import { isVideoFile } from "@/lib/mime";
+import { extractVideoDimensions } from "@/lib/video-meta";
 
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
@@ -87,14 +89,23 @@ export async function uploadFile(formData) {
     let heightPx = null;
 
     try {
-      [capturedAt, { widthPx, heightPx }] = await Promise.all([
-        extractCapturedAt(buffer, {
+      if (isVideoFile({ mimeType, name: file.name })) {
+        ({ widthPx, heightPx } = await extractVideoDimensions(buffer, {
           mimeType,
           name: file.name,
-          fallbackDate: file.lastModified ? new Date(file.lastModified) : null,
-        }),
-        extractImageDimensions(buffer, { mimeType, name: file.name }),
-      ]);
+        }));
+      } else {
+        [capturedAt, { widthPx, heightPx }] = await Promise.all([
+          extractCapturedAt(buffer, {
+            mimeType,
+            name: file.name,
+            fallbackDate: file.lastModified
+              ? new Date(file.lastModified)
+              : null,
+          }),
+          extractImageDimensions(buffer, { mimeType, name: file.name }),
+        ]);
+      }
     } catch (metaError) {
       console.warn("uploadFile/meta:", metaError?.message || metaError);
     }
